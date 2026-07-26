@@ -71,7 +71,8 @@ def estimate_tempo_downbeats_meter(stems, CFG, manifest):
 
     # Beat tracking in frames
     raw_tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units="frames")
-    norm_tempo = _normalize_tempo(float(raw_tempo))
+    raw_tempo = float(raw_tempo) if hasattr(raw_tempo, '__iter__') else float(raw_tempo)
+    norm_tempo = _normalize_tempo(raw_tempo)
 
     # Beats -> times
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)

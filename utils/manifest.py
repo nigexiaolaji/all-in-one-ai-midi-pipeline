@@ -15,5 +15,6 @@ def read_manifest(path: str):
     return {}
 
 def write_manifest(path: str, obj: dict):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         json.dump(obj, f, indent=2)

@@ -1,7 +1,11 @@
-# config.yaml (recommended)
+# config.yaml — GPU 满血版（ModelScope Notebook）
+# CPU 环境也兼容，自动降级参数
+
 separation:
-  model: htdemucs
+  model: htdemucs_6s
   out_dir: data/stems
+  # GPU 自动使用 shifts=5 segment=7.8 overlap=0.25（最高质量）
+  # CPU 自动降级为 shifts=1 segment=4 overlap=0.1（速度优先）
 
 meter_key:
   meter_conf_threshold: 0.58
