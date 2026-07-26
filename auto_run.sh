@@ -110,6 +110,7 @@ echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
 
 # ============================================================
 # === 阶段一：预下载模型（走镜像，幂等） ===
+#  直接尝试加载模型——若已缓存则秒过，未缓存才下载
 # ============================================================
 echo ""
 echo -e "${GREEN}[阶段一] 预下载 AI 模型${NC}"
@@ -117,13 +118,10 @@ echo "----------------------------------------"
 
 # --- Whisper large-v3（走 HF Mirror） ---
 echo "  [1/3] Whisper large-v3 模型（约 3GB，走 hf-mirror）..."
-WHISPER_CACHE="/root/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3"
-if [ -d "$WHISPER_CACHE" ]; then
-    echo "    ✅ 已缓存，跳过下载"
-else
-    python3 -c "
-import os
+python3 -c "
+import os, time
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+t0 = time.time()
 from faster_whisper import WhisperModel
 model = WhisperModel(
     'large-v3',
@@ -131,45 +129,46 @@ model = WhisperModel(
     compute_type='float16',
     download_root='/root/.cache/huggingface',
 )
-print('    ✅ Whisper large-v3 下载完成')
-"
-fi
+elapsed = time.time() - t0
+if elapsed < 3:
+    print('    ✅ 已缓存，加载耗时 {:.1f}s'.format(elapsed))
+else:
+    print('    ✅ 下载完成，耗时 {:.1f}s'.format(elapsed))
+" || echo "    ⚠️ Whisper 模型加载失败，请检查 HF_ENDPOINT 网络"
 
-# --- Demucs htdemucs_6s（走 Facebook CDN，国内可能较慢） ---
+# --- Demucs htdemucs_6s（走 Facebook CDN） ---
 echo "  [2/3] Demucs htdemucs_6s 模型（约 320MB）..."
-DEMUCS_CACHE="$HOME/.cache/torch/hub/checkpoints"
-if ls "$DEMUCS_CACHE"/*htdemucs* 2>/dev/null; then
-    echo "    ✅ 已缓存，跳过下载"
-else
-    echo "    ⚠️ 首次下载走 Facebook CDN，可能较慢（约 1-3 分钟）"
-    python3 -c "
-import torch
+python3 -c "
+import time, torch
+t0 = time.time()
 from demucs import pretrained
 model = pretrained.get_model('htdemucs_6s')
 if torch.cuda.is_available():
     model.cuda()
-print('    ✅ Demucs htdemucs_6s 下载完成')
-" || echo "    ⚠️ Demucs 模型下载失败，后续运行时会自动重试"
-fi
+elapsed = time.time() - t0
+if elapsed < 3:
+    print('    ✅ 已缓存，加载耗时 {:.1f}s'.format(elapsed))
+else:
+    print('    ✅ 下载完成，耗时 {:.1f}s'.format(elapsed))
+" || echo "    ⚠️ Demucs 模型加载失败，后续运行时会自动重试"
 
 # --- Basic Pitch（走 tfhub.dev） ---
 echo "  [3/3] Basic Pitch 模型（约 60MB，走 tfhub.dev）..."
-BP_CACHE="/root/.cache/tfhub_modules"
-if [ -d "$BP_CACHE" ] && [ "$(ls -A "$BP_CACHE" 2>/dev/null)" ]; then
-    echo "    ✅ 已缓存，跳过下载"
-else
-    echo "    ⚠️ 首次下载走 tfhub.dev，可能较慢（约 1 分钟）"
-    python3 -c "
-import numpy as np, soundfile as sf, tempfile, os
+python3 -c "
+import numpy as np, soundfile as sf, tempfile, os, time
 dummy = np.zeros((44100 * 2,), dtype=np.float32)
 tmp = os.path.join(tempfile.gettempdir(), '_bp_dummy.wav')
 sf.write(tmp, dummy, 44100)
+t0 = time.time()
 from basic_pitch.inference import predict
 predict(tmp)
 os.remove(tmp)
-print('    ✅ Basic Pitch 下载完成')
-" || echo "    ⚠️ Basic Pitch 模型下载失败，后续运行时会自动重试"
-fi
+elapsed = time.time() - t0
+if elapsed < 3:
+    print('    ✅ 已缓存，加载耗时 {:.1f}s'.format(elapsed))
+else:
+    print('    ✅ 下载完成，耗时 {:.1f}s'.format(elapsed))
+" || echo "    ⚠️ Basic Pitch 模型加载失败，后续运行时会自动重试"
 
 echo -e "  ${GREEN}✅ 模型准备完成${NC}"
 
