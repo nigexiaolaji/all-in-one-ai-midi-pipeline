@@ -98,12 +98,13 @@ for pkg in pyyaml tqdm soundfile faster-whisper demucs pretty_midi; do
     fi
 done
 
-# basic-pitch 单独处理：必须用 --no-build-isolation 复用已安装的 numpy
+# basic-pitch 单独处理：需要编译，先装构建依赖
 if python3 -c "import basic_pitch" 2>/dev/null; then
     echo "    basic-pitch — 已安装"
 else
     echo "    basic-pitch — 安装中（编译较慢，约 1-2 分钟）..."
-    pip install basic-pitch --no-build-isolation 2>&1 | tail -3 || echo "    ⚠️ basic-pitch 安装失败，请检查网络"
+    pip install Cython wheel --quiet 2>/dev/null
+    pip install basic-pitch 2>&1 | tail -5 || echo "    ⚠️ basic-pitch 安装失败，后续运行时会自动重试"
 fi
 echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
 
