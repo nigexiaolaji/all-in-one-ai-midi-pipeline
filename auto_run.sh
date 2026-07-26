@@ -70,7 +70,7 @@ python3 -c "
 import torch
 assert torch.cuda.is_available(), 'GPU 不可用！'
 print(f'  GPU: {torch.cuda.get_device_name(0)}')
-vram = torch.cuda.get_device_properties(0).total_mem / 1024**3
+vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
 print(f'  VRAM: {vram:.1f} GB')
 " 2>&1 | while read line; do echo "  $line"; done
 echo -e "  ${GREEN}✅ GPU 环境正常${NC}"
@@ -80,15 +80,31 @@ echo ""
 echo "  检查/安装 Python 依赖..."
 pip install --upgrade pip --quiet 2>/dev/null || true
 
-# 核心依赖（幂等安装）
-for pkg in numpy pyyaml tqdm soundfile faster-whisper demucs basic-pitch pretty_midi; do
+# 先装 numpy（basic-pitch 编译依赖它）
+if ! python3 -c "import numpy" 2>/dev/null; then
+    echo "    numpy — 安装中..."
+    pip install numpy --quiet || echo "    ⚠️ numpy 安装失败"
+else
+    echo "    numpy — 已安装"
+fi
+
+# 核心依赖（basic-pitch 需要 --no-build-isolation 避免编译 numpy）
+for pkg in pyyaml tqdm soundfile faster-whisper demucs pretty_midi; do
     if python3 -c "import ${pkg//-/_}" 2>/dev/null; then
         echo "    ${pkg} — 已安装"
     else
         echo "    ${pkg} — 安装中..."
-        pip install "$pkg" --quiet 2>&1 | tail -1 || echo "    ⚠️ ${pkg} 安装失败，请检查网络"
+        pip install "$pkg" --quiet || echo "    ⚠️ ${pkg} 安装失败"
     fi
 done
+
+# basic-pitch 单独处理：必须用 --no-build-isolation 复用已安装的 numpy
+if python3 -c "import basic_pitch" 2>/dev/null; then
+    echo "    basic-pitch — 已安装"
+else
+    echo "    basic-pitch — 安装中（编译较慢，约 1-2 分钟）..."
+    pip install basic-pitch --no-build-isolation 2>&1 | tail -3 || echo "    ⚠️ basic-pitch 安装失败，请检查网络"
+fi
 echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
 
 
