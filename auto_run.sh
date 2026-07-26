@@ -110,31 +110,50 @@ echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
 
 # ============================================================
 # === 阶段一：预下载模型（走镜像，幂等） ===
-#  直接尝试加载模型——若已缓存则秒过，未缓存才下载
+#  Whisper 走 ModelScope 内网（快），其余按需下载
 # ============================================================
 echo ""
 echo -e "${GREEN}[阶段一] 预下载 AI 模型${NC}"
 echo "----------------------------------------"
 
-# --- Whisper large-v3（走 HF Mirror） ---
-echo "  [1/3] Whisper large-v3 模型（约 3GB，走 hf-mirror）..."
+# --- Whisper large-v3（ModelScope 内网下载，约 18 秒） ---
+echo "  [1/3] Whisper large-v3 模型（约 3GB，ModelScope 内网）..."
 python3 -c "
-import os, time
-os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+import os, time, shutil
+
+# 1. 用 ModelScope 内网下载（极快）
+from modelscope import snapshot_download
 t0 = time.time()
-from faster_whisper import WhisperModel
-model = WhisperModel(
-    'large-v3',
-    device='cuda',
-    compute_type='float16',
-    download_root='/root/.cache/huggingface',
+model_dir = snapshot_download(
+    'Systran/faster-whisper-large-v3',
+    cache_dir='/root/.cache/huggingface',
 )
-elapsed = time.time() - t0
-if elapsed < 3:
-    print('    ✅ 已缓存，加载耗时 {:.1f}s'.format(elapsed))
-else:
-    print('    ✅ 下载完成，耗时 {:.1f}s'.format(elapsed))
-" || echo "    ⚠️ Whisper 模型加载失败，请检查 HF_ENDPOINT 网络"
+print('    ModelScope 下载耗时 {:.0f}s'.format(time.time() - t0))
+
+# 2. 创建 HuggingFace 缓存格式的符号链接（faster-whisper 需要这个格式）
+hf_dir = '/root/.cache/huggingface/models--Systran--faster-whisper-large-v3'
+snap_dir = os.path.join(hf_dir, 'snapshots', 'modelscope')
+refs_dir = os.path.join(hf_dir, 'refs')
+os.makedirs(snap_dir, exist_ok=True)
+os.makedirs(refs_dir, exist_ok=True)
+
+# 写入 refs/main
+with open(os.path.join(refs_dir, 'main'), 'w') as f:
+    f.write('modelscope')
+
+# 为每个文件创建符号链接
+for fname in os.listdir(model_dir):
+    src = os.path.join(model_dir, fname)
+    dst = os.path.join(snap_dir, fname)
+    if not os.path.exists(dst):
+        os.symlink(src, dst)
+
+# 3. 验证加载
+from faster_whisper import WhisperModel
+t0 = time.time()
+model = WhisperModel('large-v3', device='cuda', compute_type='float16', download_root='/root/.cache/huggingface')
+print('    ✅ 加载成功，耗时 {:.1f}s'.format(time.time() - t0))
+" || echo "    ⚠️ Whisper 模型加载失败"
 
 # --- Demucs htdemucs_6s（走 Facebook CDN） ---
 echo "  [2/3] Demucs htdemucs_6s 模型（约 320MB）..."
