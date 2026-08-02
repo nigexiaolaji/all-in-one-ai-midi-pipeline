@@ -417,11 +417,6 @@ def process_batch(
     if parallel > 1:
         # === 多进程并行处理（实时进度） ===
         from multiprocessing import Pool
-        import functools
-
-        def _run_safe(args):
-            # starmap 的 imap 版包装：把参数元组解包后调用
-            return _process_single_song_safe(*args)
 
         task_args = [
             (
@@ -442,7 +437,7 @@ def process_batch(
         fail_count = 0
         with Pool(processes=min(parallel, len(files))) as pool:
             for i, result in enumerate(
-                pool.imap(_run_safe, task_args, chunksize=1), 1
+                pool.imap(_process_single_song_safe_star, task_args, chunksize=1), 1
             ):
                 song_id = song_id_from_path(files[i - 1])
                 if isinstance(result, Exception):
@@ -454,6 +449,7 @@ def process_batch(
                     failed_songs.append({"song_id": song_id, "error": str(result)})
                 else:
                     ok_count += 1
+                    all_results.append(result)
                     print(
                         f"✅ [{i}/{len(files)}] 完成({ok_count}): {song_id}",
                         flush=True,
@@ -463,7 +459,6 @@ def process_batch(
                     f"    └ 进度: {i}/{len(files)}  ✅{ok_count} ❌{fail_count}",
                     flush=True,
                 )
-                all_results.append(result)
     else:
         # === 顺序处理 ===
         for idx, audio_path in enumerate(files, 1):
@@ -509,6 +504,11 @@ def process_batch(
         "report": report,
         "failed": failed_songs,
     }
+
+
+def _process_single_song_safe_star(args):
+    """pool.imap 用的模块级包装：解包参数元组后调用（局部函数不可 pickle）。"""
+    return _process_single_song_safe(*args)
 
 
 def _process_single_song_safe(
