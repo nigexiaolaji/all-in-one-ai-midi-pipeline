@@ -60,6 +60,8 @@ pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ 2>/dev/n
 pip config set global.trusted-host mirrors.aliyun.com 2>/dev/null || true
 
 export HF_ENDPOINT=https://hf-mirror.com
+# 禁用 huggingface_hub 的 xet 下载后端（魔塔访问 cas-server.xethub.hf.co 会 401）
+export HF_HUB_DISABLE_XET=1
 if ! grep -q "HF_ENDPOINT" ~/.bashrc 2>/dev/null; then
     echo "export HF_ENDPOINT=https://hf-mirror.com" >> ~/.bashrc
 fi
@@ -185,33 +187,30 @@ else
     python3 -c "import modelscope" 2>/dev/null || pip install modelscope --quiet
 
     python3 -c "
-import os, time
+import os, time, shutil
 from modelscope import snapshot_download
 t0 = time.time()
 model_dir = snapshot_download(
     '$MODELSCOPE_ID',
-    cache_dir='/root/.cache/huggingface',
+    cache_dir='/root/.cache/modelscope_whisper',
 )
 print('    ModelScope 下载耗时 {:.0f}s'.format(time.time() - t0))
 
-hf_dir = '/root/.cache/huggingface/models--' + '$MODELSCOPE_ID'.replace('/', '--')
-snap_dir = os.path.join(hf_dir, 'snapshots', 'modelscope')
-refs_dir = os.path.join(hf_dir, 'refs')
-os.makedirs(snap_dir, exist_ok=True)
-os.makedirs(refs_dir, exist_ok=True)
-
-with open(os.path.join(refs_dir, 'main'), 'w') as f:
-    f.write('modelscope')
-
+# 把下载的模型复制到本地模型目录（extract_lyrics.py 的 LOCAL_MODEL_DIRS 直接命中，
+# 加载走本地路径，彻底绕开 huggingface_hub 的 xet 下载后端）
+os.makedirs('$LOCAL_W_DIR', exist_ok=True)
+copied = 0
 for fname in os.listdir(model_dir):
     src = os.path.join(model_dir, fname)
-    dst = os.path.join(snap_dir, fname)
+    dst = os.path.join('$LOCAL_W_DIR', fname)
     if os.path.isfile(src) and not os.path.exists(dst):
-        os.symlink(src, dst)
+        shutil.copy2(src, dst)
+        copied += 1
+print('    已复制 %d 个文件到 %s' % (copied, '$LOCAL_W_DIR'))
 
 from faster_whisper import WhisperModel
 t0 = time.time()
-model = WhisperModel('$WHISPER_MODEL', device='cuda', compute_type='float16', download_root='/root/.cache/huggingface')
+model = WhisperModel('$LOCAL_W_DIR', device='cuda', compute_type='float16')
 print('    ✅ 加载成功，耗时 {:.1f}s'.format(time.time() - t0))
 " || echo "    ⚠️ Whisper 模型下载/加载失败，可在重试前检查模型缓存目录"
 fi
