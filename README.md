@@ -200,10 +200,19 @@ When `--no-clean` is used, the manifest records:
 
 ## Install
 
-Use **Python 3.10** (this repo is tuned for it).
+Supported Python versions:
 
-    # 1) Create & activate venv
-    python3.10 -m venv .venv-ai-midi
+- **Python 3.11** — local development (Windows/Linux)
+- **Python 3.12** — ModelScope Notebook (Ubuntu 22.04 + CUDA 12.8.1 + PyTorch 2.10, pre-installed)
+
+> `requirements.txt` pins packages for the local Python 3.11 venv
+> (`numpy==1.24.3` / `torch==2.1.0` have **no Python 3.12 wheels**).
+> On ModelScope (Python 3.12) do **not** install it — run `bash auto_run.sh`
+> or `bash setup_modelscope.sh` instead, which install unpinned packages and
+> reuse the environment's pre-installed PyTorch 2.10.
+
+    # 1) Local: create & activate venv (Python 3.11)
+    python3.11 -m venv .venv-ai-midi
     source .venv-ai-midi/bin/activate
 
     # 2) Install dependencies
@@ -218,6 +227,18 @@ Key dependencies (see `requirements.txt` for exact pins):
 - Drums: `adtof_pytorch`
 - CLI / misc: `gradio`, `tqdm`, `pyyaml`
 - Optional: `madmom` for extra beat/downbeat features
+
+### Local Whisper Models
+
+`steps/extract_lyrics.py` loads Whisper from the local `model/` folder next to the repo
+(fallback: HuggingFace download, `HF_ENDPOINT` mirror supported):
+
+    model/large/   # faster-whisper-large-v3  (model.bin + config.json + tokenizer.json + vocabulary.json)
+    model/small/   # faster-whisper-small     (model.bin + config.json + tokenizer.json + vocabulary.txt)
+
+- `--whisper-model large-v3` → `model/large/`（默认）
+- `--whisper-model small` → `model/small/`
+- 模型根目录可用环境变量 `WHISPER_MODEL_DIR` 覆盖
 
 ---
 

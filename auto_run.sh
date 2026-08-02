@@ -2,36 +2,41 @@
 # ============================================================
 #  AI MIDI Pipeline — 全自动一键运行脚本
 #  目标环境: ModelScope Notebook (Ubuntu 22.04 + CUDA 12.8.1)
-#            Python 3.12 + PyTorch 2.10.0 + 24GB 显存 GPU
+#            Python 3.12 + PyTorch 2.10 + 24GB 显存 GPU
 #
 #  用法:
-#      1. 把整个 all-in-one-ai-midi-pipeline 目录上传到 /mnt/workspace/
-#      2. 把 MP3 文件放到 /mnt/workspace/input/ （保持原目录结构即可）
-#      3. cd /mnt/workspace/all-in-one-ai-midi-pipeline
-#      4. bash auto_run.sh
+#      1. 把 all-in-one-ai-midi-pipeline 目录上传到 /mnt/workspace/
+#      2. 把 model/ 目录上传到 /mnt/workspace/ （内含 large/ 与 small/ 两个 Whisper 模型，
+#         上传后脚本直接本地加载，无需再下载）
+#      3. 把 MP3 文件放到 /mnt/workspace/all-in-one-ai-midi-pipeline/input/
+#         （建议先用 prepare_input.py 去重筛选）
+#      4. cd /mnt/workspace/all-in-one-ai-midi-pipeline && bash auto_run.sh
 #
 #  所有下载均走国内镜像，无需科学上网
-#  自动检测 MP3、过滤 KAITO/唱见、并行 10 首处理
 # ============================================================
 set -e
-
-# ============================================================
-# === 可配置参数（也可通过环境变量覆盖） ===
-# ============================================================
-INPUT_DIR="${INPUT_DIR:-/mnt/workspace/input}"          # MP3 输入目录
-OUTPUT_DIR="${OUTPUT_DIR:-/mnt/workspace/output}"        # 输出目录
-PARALLEL="${PARALLEL:-10}"                               # 并行处理歌曲数
-LANGUAGE="${LANGUAGE:-ja}"                               # 歌词语言
-WHISPER_MODEL="${WHISPER_MODEL:-large-v3}"               # Whisper 模型
-SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速）
-SKIP_TO_STAGE="${SKIP_TO_STAGE:-0}"                      # 从第几阶段开始（0=从头开始）
 
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
+
+# ============================================================
+# === 基础路径 & 可配置参数（可通过环境变量覆盖） ===
+# ============================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+INPUT_DIR="${INPUT_DIR:-$SCRIPT_DIR/input}"              # MP3 输入目录（默认 pipeline 内 input/）
+OUTPUT_DIR="${OUTPUT_DIR:-/mnt/workspace/output}"        # 输出目录
+PARALLEL="${PARALLEL:-10}"                               # 并行处理歌曲数
+LANGUAGE="${LANGUAGE:-ja}"                               # 歌词语言
+WHISPER_MODEL="${WHISPER_MODEL:-large-v3}"               # Whisper 模型 (large-v3 / small)
+SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速）
+SKIP_TO_STAGE="${SKIP_TO_STAGE:-0}"                      # 从第几阶段开始（0=从头开始）
+MODEL_DIR="${MODEL_DIR:-$(dirname "$SCRIPT_DIR")/model}" # 本地模型根目录（large/ 与 small/）
 
 echo -e "${BLUE}"
 echo "=========================================="
@@ -46,18 +51,14 @@ echo -e "${NC}"
 echo ""
 echo -e "${GREEN}[阶段零] 环境检查 & 镜像配置${NC}"
 echo "----------------------------------------"
-
-# --- 检查当前目录 ---
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
 echo "  工作目录: $SCRIPT_DIR"
+echo "  输入目录: $INPUT_DIR"
+echo "  模型目录: $MODEL_DIR"
 
-# --- 配置所有镜像源 ---
-echo "  配置镜像源..."
+# --- 配置镜像源 ---
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ 2>/dev/null || true
 pip config set global.trusted-host mirrors.aliyun.com 2>/dev/null || true
 
-# HuggingFace 镜像（Whisper 模型下载）
 export HF_ENDPOINT=https://hf-mirror.com
 if ! grep -q "HF_ENDPOINT" ~/.bashrc 2>/dev/null; then
     echo "export HF_ENDPOINT=https://hf-mirror.com" >> ~/.bashrc
@@ -72,25 +73,27 @@ assert torch.cuda.is_available(), 'GPU 不可用！'
 print(f'  GPU: {torch.cuda.get_device_name(0)}')
 vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
 print(f'  VRAM: {vram:.1f} GB')
-" 2>&1 | while read line; do echo "  $line"; done
+" 2>&1 | while read -r line; do echo "  $line"; done
 echo -e "  ${GREEN}✅ GPU 环境正常${NC}"
 
-# --- 安装依赖（幂等：已安装则跳过） ---
+# --- 检查/安装依赖（幂等，Python 3.12 不锁定版本） ---
 echo ""
 echo "  检查/安装 Python 依赖..."
 pip install --upgrade pip --quiet 2>/dev/null || true
 
-# 先装 numpy（basic-pitch 编译依赖它）
-if ! python3 -c "import numpy" 2>/dev/null; then
-    echo "    numpy — 安装中..."
-    pip install numpy --quiet || echo "    ⚠️ numpy 安装失败"
-else
-    echo "    numpy — 已安装"
-fi
+# 软件包名 -> 导入名的映射（pyyaml 导入名为 yaml，不能直接替换连字符）
+declare -A PKG_IMPORT=(
+    [pyyaml]=yaml
+    [tqdm]=tqdm
+    [soundfile]=soundfile
+    [faster-whisper]=faster_whisper
+    [demucs]=demucs
+    [pretty_midi]=pretty_midi
+)
 
-# 核心依赖（basic-pitch 需要 --no-build-isolation 避免编译 numpy）
-for pkg in pyyaml tqdm soundfile faster-whisper demucs pretty_midi; do
-    if python3 -c "import ${pkg//-/_}" 2>/dev/null; then
+for pkg in "${!PKG_IMPORT[@]}"; do
+    import_name="${PKG_IMPORT[$pkg]}"
+    if python3 -c "import ${import_name}" 2>/dev/null; then
         echo "    ${pkg} — 已安装"
     else
         echo "    ${pkg} — 安装中..."
@@ -98,63 +101,80 @@ for pkg in pyyaml tqdm soundfile faster-whisper demucs pretty_midi; do
     fi
 done
 
-# basic-pitch 单独处理：需要编译，先装构建依赖
+# basic-pitch 单独处理：需要编译，先装构建依赖；失败时保留日志并给出提示
 if python3 -c "import basic_pitch" 2>/dev/null; then
     echo "    basic-pitch — 已安装"
 else
     echo "    basic-pitch — 安装中（编译较慢，约 1-2 分钟）..."
-    pip install Cython wheel --quiet 2>/dev/null
-    pip install basic-pitch 2>&1 | tail -5 || echo "    ⚠️ basic-pitch 安装失败，后续运行时会自动重试"
+    pip install Cython wheel --quiet 2>/dev/null || true
+    if pip install basic-pitch > /tmp/basic_pitch_install.log 2>&1; then
+        echo "    basic-pitch — 安装完成"
+    else
+        echo "    ⚠️ basic-pitch 安装失败（日志: /tmp/basic_pitch_install.log）"
+    fi
 fi
 echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
 
 
 # ============================================================
-# === 阶段一：预下载模型（走镜像，幂等） ===
-#  Whisper 走 ModelScope 内网（快），其余按需下载
+# === 阶段一：Whisper 模型准备（本地优先，缺失才下载） ===
 # ============================================================
 echo ""
-echo -e "${GREEN}[阶段一] 预下载 AI 模型${NC}"
+echo -e "${GREEN}[阶段一] Whisper 模型准备${NC}"
 echo "----------------------------------------"
 
-# --- Whisper large-v3（ModelScope 内网下载，约 18 秒） ---
-echo "  [1/3] Whisper large-v3 模型（约 3GB，ModelScope 内网）..."
-python3 -c "
-import os, time, shutil
+case "$WHISPER_MODEL" in
+    large|large-v3)
+        LOCAL_W_DIR="$MODEL_DIR/large"
+        MODELSCOPE_ID="Systran/faster-whisper-large-v3"
+        ;;
+    small)
+        LOCAL_W_DIR="$MODEL_DIR/small"
+        MODELSCOPE_ID="Systran/faster-whisper-small"
+        ;;
+    *)
+        echo -e "  ${RED}❌ 未知的 WHISPER_MODEL: $WHISPER_MODEL（可选: large-v3 / small）${NC}"
+        exit 1
+        ;;
+esac
 
-# 1. 用 ModelScope 内网下载（极快）
+if [ -f "$LOCAL_W_DIR/model.bin" ]; then
+    echo -e "  ${GREEN}✅ 使用本地模型: $LOCAL_W_DIR${NC}"
+else
+    echo "  本地模型不存在（$LOCAL_W_DIR），从 ModelScope 内网下载 $MODELSCOPE_ID..."
+    python3 -c "import modelscope" 2>/dev/null || pip install modelscope --quiet
+
+    python3 -c "
+import os, time
 from modelscope import snapshot_download
 t0 = time.time()
 model_dir = snapshot_download(
-    'Systran/faster-whisper-large-v3',
+    '$MODELSCOPE_ID',
     cache_dir='/root/.cache/huggingface',
 )
 print('    ModelScope 下载耗时 {:.0f}s'.format(time.time() - t0))
 
-# 2. 创建 HuggingFace 缓存格式的符号链接（faster-whisper 需要这个格式）
-hf_dir = '/root/.cache/huggingface/models--Systran--faster-whisper-large-v3'
+hf_dir = '/root/.cache/huggingface/models--' + '$MODELSCOPE_ID'.replace('/', '--')
 snap_dir = os.path.join(hf_dir, 'snapshots', 'modelscope')
 refs_dir = os.path.join(hf_dir, 'refs')
 os.makedirs(snap_dir, exist_ok=True)
 os.makedirs(refs_dir, exist_ok=True)
 
-# 写入 refs/main
 with open(os.path.join(refs_dir, 'main'), 'w') as f:
     f.write('modelscope')
 
-# 为每个文件创建符号链接
 for fname in os.listdir(model_dir):
     src = os.path.join(model_dir, fname)
     dst = os.path.join(snap_dir, fname)
-    if not os.path.exists(dst):
+    if os.path.isfile(src) and not os.path.exists(dst):
         os.symlink(src, dst)
 
-# 3. 验证加载
 from faster_whisper import WhisperModel
 t0 = time.time()
-model = WhisperModel('large-v3', device='cuda', compute_type='float16', download_root='/root/.cache/huggingface')
+model = WhisperModel('$WHISPER_MODEL', device='cuda', compute_type='float16', download_root='/root/.cache/huggingface')
 print('    ✅ 加载成功，耗时 {:.1f}s'.format(time.time() - t0))
-" || echo "    ⚠️ Whisper 模型加载失败"
+" || echo "    ⚠️ Whisper 模型下载/加载失败，可在重试前检查模型缓存目录"
+fi
 
 # --- Demucs htdemucs_6s（走 Facebook CDN） ---
 echo "  [2/3] Demucs htdemucs_6s 模型（约 320MB）..."
@@ -194,78 +214,87 @@ echo -e "  ${GREEN}✅ 模型准备完成${NC}"
 
 
 # ============================================================
-# === 阶段二：输入文件检测 & 过滤 ===
+# === 阶段二：输入文件检测 ===
 # ============================================================
 echo ""
-echo -e "${GREEN}[阶段二] 输入文件检测 & 过滤${NC}"
+echo -e "${GREEN}[阶段二] 输入文件检测${NC}"
 echo "----------------------------------------"
-
-# --- 创建扁平化输入目录 ---
-FLAT_INPUT="$SCRIPT_DIR/input"
-rm -rf "$FLAT_INPUT"
-mkdir -p "$FLAT_INPUT"
-
-# --- 递归查找所有 MP3 ---
 echo "  搜索目录: $INPUT_DIR"
-MP3_COUNT=$(find "$INPUT_DIR" -name "*.mp3" 2>/dev/null | wc -l)
-echo "  找到 $MP3_COUNT 个 MP3 文件"
 
-# --- 过滤规则：排除 KAITO 版本、唱见演唱、CC字幕版（优先用中文字幕版） ---
-# 使用临时文件避免管道子 shell 导致的计数丢失
-FILTER_TMP=$(mktemp)
-find "$INPUT_DIR" -name "*.mp3" 2>/dev/null > "$FILTER_TMP"
-
-COPIED=0
-SKIPPED_KAITO=0
-SKIPPED_COVER=0
-SKIPPED_CC=0
-
-while read -r f; do
-    [ -z "$f" ] && continue
-    basename_f=$(basename "$f")
-
-    # 规则1：排除 KAITO 版本
-    if echo "$f" | grep -qi "KAITO"; then
-        echo "    ❌ 跳过(KAITO): $basename_f"
-        SKIPPED_KAITO=$((SKIPPED_KAITO + 1))
-        continue
+# 安全处理：绝不删除 input/ 目录内容
+if [ "$INPUT_DIR" = "$SCRIPT_DIR/input" ]; then
+    # 默认情况：歌曲已放入 pipeline 的 input/（建议先用 prepare_input.py 去重）
+    FLAT_INPUT="$SCRIPT_DIR/input"
+    MP3_COUNT=$(find "$FLAT_INPUT" -maxdepth 1 -name "*.mp3" 2>/dev/null | wc -l)
+    echo "  使用 input/ 目录，已找到 $MP3_COUNT 首 MP3（跳过过滤/复制）"
+    if [ "$MP3_COUNT" -eq 0 ]; then
+        echo -e "${RED}❌ input/ 目录下没有 MP3 文件！${NC}"
+        echo "  提示: 1) 把 MP3 放入 input/；2) 或设置 INPUT_DIR 指向外部目录（脚本会自动筛选复制）"
+        exit 1
     fi
+else
+    # 外部目录：递归查找 + 过滤（KAITO/唱见/CC字幕版），暂存到临时目录，不动 input/
+    STAGING="$(mktemp -d)"
+    FLAT_INPUT="$STAGING"
+    trap 'rm -rf "$STAGING"' EXIT
 
-    # 规则2：排除唱见演唱
-    if echo "$f" | grep -q "唱见演唱"; then
-        echo "    ❌ 跳过(唱见): $basename_f"
-        SKIPPED_COVER=$((SKIPPED_COVER + 1))
-        continue
-    fi
+    MP3_COUNT=$(find "$INPUT_DIR" -name "*.mp3" 2>/dev/null | wc -l)
+    echo "  找到 $MP3_COUNT 个 MP3 文件（外部目录模式，将筛选后复制到临时目录）"
 
-    # 规则3：同一目录下，有中文字幕版时跳过 CC字幕版
-    if echo "$basename_f" | grep -q "CC字幕"; then
-        parent_dir=$(dirname "$f")
-        if ls "$parent_dir"/*中文字幕* 2>/dev/null | grep -v "CC字幕" > /dev/null; then
-            echo "    ❌ 跳过(CC字幕，已有中文字幕版): $basename_f"
-            SKIPPED_CC=$((SKIPPED_CC + 1))
+    FILTER_TMP=$(mktemp)
+    find "$INPUT_DIR" -name "*.mp3" 2>/dev/null > "$FILTER_TMP"
+
+    COPIED=0
+    SKIPPED_KAITO=0
+    SKIPPED_COVER=0
+    SKIPPED_CC=0
+
+    while read -r f; do
+        [ -z "$f" ] && continue
+        basename_f=$(basename "$f")
+
+        # 规则1：排除 KAITO 版本
+        if echo "$f" | grep -qi "KAITO"; then
+            echo "    ❌ 跳过(KAITO): $basename_f"
+            SKIPPED_KAITO=$((SKIPPED_KAITO + 1))
             continue
         fi
-    fi
 
-    # 复制到扁平输入目录（用子目录名+文件名避免冲突）
-    rel_path="${f#$INPUT_DIR/}"
-    safe_name=$(echo "$rel_path" | tr '/' '_' | tr ' ' '_')
-    cp "$f" "$FLAT_INPUT/$safe_name"
-    echo "    ✅ $safe_name"
-    COPIED=$((COPIED + 1))
-done < "$FILTER_TMP"
-rm -f "$FILTER_TMP"
+        # 规则2：排除唱见演唱
+        if echo "$f" | grep -q "唱见演唱"; then
+            echo "    ❌ 跳过(唱见): $basename_f"
+            SKIPPED_COVER=$((SKIPPED_COVER + 1))
+            continue
+        fi
 
-echo ""
-echo "  ┌───────────────────────────────┐"
-echo "  │  复制:        ${COPIED} 首"
-echo "  │  跳过(KAITO): ${SKIPPED_KAITO} 首"
-echo "  │  跳过(唱见):  ${SKIPPED_COVER} 首"
-echo "  │  跳过(CC字幕): ${SKIPPED_CC} 首"
-echo "  └───────────────────────────────┘"
+        # 规则3：同一目录下，有中文字幕版时跳过 CC字幕版
+        if echo "$basename_f" | grep -q "CC字幕"; then
+            parent_dir=$(dirname "$f")
+            if ls "$parent_dir"/*中文字幕* 2>/dev/null | grep -v "CC字幕" > /dev/null; then
+                echo "    ❌ 跳过(CC字幕，已有中文字幕版): $basename_f"
+                SKIPPED_CC=$((SKIPPED_CC + 1))
+                continue
+            fi
+        fi
 
-# 重新统计实际数量
+        # 复制到临时目录（用子目录名+文件名避免冲突）
+        rel_path="${f#$INPUT_DIR/}"
+        safe_name=$(echo "$rel_path" | tr '/' '_' | tr ' ' '_')
+        cp "$f" "$FLAT_INPUT/$safe_name"
+        echo "    ✅ $safe_name"
+        COPIED=$((COPIED + 1))
+    done < "$FILTER_TMP"
+    rm -f "$FILTER_TMP"
+
+    echo ""
+    echo "  ┌───────────────────────────────┐"
+    echo "  │  复制:        ${COPIED} 首"
+    echo "  │  跳过(KAITO): ${SKIPPED_KAITO} 首"
+    echo "  │  跳过(唱见):  ${SKIPPED_COVER} 首"
+    echo "  │  跳过(CC字幕): ${SKIPPED_CC} 首"
+    echo "  └───────────────────────────────┘"
+fi
+
 FINAL_COUNT=$(ls "$FLAT_INPUT"/*.mp3 2>/dev/null | wc -l)
 echo -e "  ${GREEN}✅ 最终待处理: $FINAL_COUNT 首歌曲${NC}"
 
@@ -285,7 +314,7 @@ echo "  输入目录: $FLAT_INPUT"
 echo "  输出目录: $OUTPUT_DIR"
 echo "  并行数:   $PARALLEL"
 echo "  语言:     $LANGUAGE"
-echo "  Whisper:  $WHISPER_MODEL"
+echo "  Whisper:  $WHISPER_MODEL (本地: $LOCAL_W_DIR)"
 echo "  跳过鼓组: $SKIP_DRUMS"
 echo ""
 
@@ -299,21 +328,25 @@ CMD_ARGS=(
     "--parallel" "$PARALLEL"
 )
 
-[ "$SKIP_DRUMS" = "true" ] && CMD_ARGS+=("--skip-drums")
-[ "$SKIP_TO_STAGE" != "0" ] && CMD_ARGS+=("--skip-to-stage" "$SKIP_TO_STAGE")
+if [ "$SKIP_DRUMS" = "true" ]; then
+    CMD_ARGS+=("--skip-drums")
+fi
+if [ "$SKIP_TO_STAGE" != "0" ]; then
+    CMD_ARGS+=("--skip-to-stage" "$SKIP_TO_STAGE")
+fi
 
 echo "  执行命令:"
 echo "  python3 run_extraction.py ${CMD_ARGS[*]}"
 echo ""
 
-# 记录开始时间
 START_TIME=$(date +%s)
 
-# 执行
+# 关闭 set -e，确保流水线失败后仍能执行阶段四的汇总
+set +e
 python3 run_extraction.py "${CMD_ARGS[@]}"
 EXIT_CODE=$?
+set -e
 
-# 记录结束时间
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 MINUTES=$((DURATION / 60))
@@ -342,6 +375,7 @@ if [ -d "$OUTPUT_DIR" ]; then
     echo ""
     echo "  各歌曲输出文件:"
     for song_dir in "$OUTPUT_DIR"/*/; do
+        [ -d "$song_dir" ] || continue
         song_name=$(basename "$song_dir")
         file_count=$(ls "$song_dir" 2>/dev/null | wc -l)
         echo "    📁 $song_name ($file_count 个文件)"

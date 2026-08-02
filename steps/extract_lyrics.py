@@ -3,7 +3,7 @@
 
 @implSpec
     上游调用方：run_extraction.py（顶层编排）
-    下游依赖：faster_whisper（语音识别，走 HuggingFace Hub，支持 HF_ENDPOINT 镜像）
+    下游依赖：faster_whisper（语音识别，优先本地 model/ 目录，支持 HF_ENDPOINT 镜像兜底）
     在架构图中的位置：Service 层 — 负责从音频到结构化歌词的转换
 
 @author AI Assistant
@@ -19,8 +19,24 @@ DEFAULT_LANGUAGE = "ja"
 DEFAULT_COMPUTE_TYPE = "float16"  # GPU 推理：半精度，速度与精度最佳平衡
 DEFAULT_BEAM_SIZE = 5  # 恢复全精度 beam search，GPU 上几乎无性能损失
 DEFAULT_CPU_THREADS = 0  # 0 = 自动检测 CPU 核心数
-DEFAULT_DOWNLOAD_ROOT = "/root/.cache/huggingface"  # Linux 模型缓存目录
+DEFAULT_DOWNLOAD_ROOT = "/root/.cache/huggingface"  # Linux 模型缓存目录（兜底）
 MIN_WORD_DURATION_SEC = 0.05
+
+# === 本地模型目录解析 ===
+# 项目根目录下的 model/ 目录组织为：
+#   model/large/  → faster-whisper-large-v3（model.bin + config.json + tokenizer.json + vocabulary.json）
+#   model/small/  → faster-whisper-small（model.bin + config.json + tokenizer.json + vocabulary.txt）
+# 可通过环境变量 WHISPER_MODEL_DIR 覆盖模型根目录
+_PIPELINE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_MODEL_ROOT = os.environ.get(
+    "WHISPER_MODEL_DIR",
+    os.path.join(os.path.dirname(_PIPELINE_DIR), "model"),
+)
+LOCAL_MODEL_DIRS = {
+    "large-v3": os.path.join(_MODEL_ROOT, "large"),
+    "large": os.path.join(_MODEL_ROOT, "large"),
+    "small": os.path.join(_MODEL_ROOT, "small"),
+}
 
 
 def extract_lyrics_with_whisper(
@@ -31,12 +47,13 @@ def extract_lyrics_with_whisper(
 ) -> dict:
     """
     使用 faster-whisper 从人声 WAV 提取带时间戳的歌词。
-    模型通过 HuggingFace Hub 下载，支持 HF_ENDPOINT 镜像。
+    模型优先从本地 model/ 目录加载（large → model/large，small → model/small），
+    本地缺失时通过 HuggingFace Hub 下载（支持 HF_ENDPOINT 镜像）。
 
     @param vocals_path: 人声轨 WAV 文件绝对路径
     @param output_dir: 输出目录，用于存放 Whisper 原始结果
     @param language: 语言代码（ja/en/zh 等）
-    @param model_size: 模型大小（tiny/base/small/medium/large-v3 等）
+    @param model_size: 模型大小（large-v3/small 优先本地 model/ 目录，否则走 HuggingFace 下载）
     @return: 结构化字典，包含 full_text、segments、words 三级时间戳
     @throws RuntimeError: 当转录失败时抛出
     """
@@ -47,13 +64,22 @@ def extract_lyrics_with_whisper(
     compute_type = os.environ.get("WHISPER_COMPUTE_TYPE", DEFAULT_COMPUTE_TYPE)
     cpu_threads = int(os.environ.get("WHISPER_CPU_THREADS", DEFAULT_CPU_THREADS))
 
+    # === 解析模型路径：优先本地 model/ 目录，缺失时走 HuggingFace 下载 ===
+    local_model_dir = LOCAL_MODEL_DIRS.get(model_size)
+    if local_model_dir and os.path.isdir(local_model_dir):
+        model_path = local_model_dir
+        print(f"    使用本地模型: {model_path}")
+    else:
+        model_path = model_size
+        print(f"    ⚠️ 未找到本地模型目录 {local_model_dir or model_size}，改用 HuggingFace 下载")
+
     # === 自动检测 GPU ===
     device = "cuda" if _has_gpu() else "cpu"
     if device == "cpu":
         compute_type = "int8"  # CPU 降级为 int8
 
     model = WhisperModel(
-        model_size,
+        model_path,
         device=device,
         compute_type=compute_type,
         cpu_threads=cpu_threads,
