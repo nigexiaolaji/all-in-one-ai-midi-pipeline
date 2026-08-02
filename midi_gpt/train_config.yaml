@@ -1,0 +1,43 @@
+# MIDI-GPT 微调配置（小数据量：30~40 首歌曲）
+# 用法: python midi_gpt/trainer.py --config midi_gpt/train_config.yaml --init-from ... --train-data ...
+
+# --- 优化器（小数据微调用低学习率） ---
+learning_rate: 2e-5
+weight_decay: 0.01
+max_grad_norm: 1.0
+warmup_steps: 100
+lr_scheduler_type: linear
+
+# --- 训练循环 ---
+# 数据集很小（每首歌曲被切窗后按窗口采样），直接用步数控制
+num_epochs: 30            # max_steps > 0 时被覆盖
+max_steps: 2000           # 总训练步数（小数据 2000 步足够起步）
+per_device_batch_size: 4  # per-GPU batch
+gradient_accumulation_steps: 8  # 有效 batch = 4 x 8 = 32
+seed: 42
+num_workers: 0            # 必须为 0（C++ 解析器不支持 fork）
+
+# --- 精度（24G 显存 GPU 用 bf16；A10 及以上支持） ---
+precision: bf16           # 或 fp16 / fp32
+
+# --- 序列长度（跟随预训练模型位置预算，默认 2048） ---
+max_seq_len: 2048
+
+# --- 检查点 / 日志 ---
+save_steps: 500
+eval_steps: 250
+logging_steps: 20
+logger: none
+
+# --- 窗口 / 轨道采样 ---
+max_tracks: 12
+min_tracks: 1
+min_fill_ratio: 0.75
+
+# --- 补全 / 掩码训练（与预训练一致的分布） ---
+infill_probability: 0.75
+infill_bar_fraction: 0.5
+mask_apply_probability: 0.5
+mask_mode: 2              # 0=RANDOM 1=STRUCTURED 2=MIXED
+mask_bar_fraction: 0.25
+mask_max_lookahead: 4

@@ -101,6 +101,14 @@ for pkg in "${!PKG_IMPORT[@]}"; do
     fi
 done
 
+# midigpt 单独处理：需要 [train] extra（lightning/datasets/pyarrow）
+if python3 -c "import midigpt" 2>/dev/null; then
+    echo "    midigpt — 已安装"
+else
+    echo "    midigpt — 安装中..."
+    pip install "midigpt[train]" --quiet || echo "    ⚠️ midigpt 安装失败（训练需另行安装）"
+fi
+
 # basic-pitch 单独处理：需要编译，先装构建依赖；失败时保留日志并给出提示
 if python3 -c "import basic_pitch" 2>/dev/null; then
     echo "    basic-pitch — 已安装"
@@ -209,6 +217,24 @@ if elapsed < 3:
 else:
     print('    ✅ 下载完成，耗时 {:.1f}s'.format(elapsed))
 " || echo "    ⚠️ Basic Pitch 模型加载失败，后续运行时会自动重试"
+
+# --- MIDI-GPT 基础模型（yellow_medium，微调用） ---
+MIDIGPT_DIR="$SCRIPT_DIR/models/midigpt"
+mkdir -p "$MIDIGPT_DIR"
+echo "  [4/4] MIDI-GPT 基础模型 yellow_medium（约 57MB，走 hf-mirror）..."
+if [ -f "$MIDIGPT_DIR/yellow_medium-final.safetensors" ]; then
+    echo "    ✅ 已存在: $MIDIGPT_DIR/yellow_medium-final.safetensors"
+else
+    HF_ENDPOINT=https://hf-mirror.com python3 -c "
+from huggingface_hub import hf_hub_download
+p = hf_hub_download(
+    repo_id='Metacreation/MIDI-GPT',
+    filename='yellow_medium-final.safetensors',
+    local_dir='$MIDIGPT_DIR',
+)
+print('    ✅ MIDI-GPT 下载完成:', p)
+" || echo "    ⚠️ MIDI-GPT 模型下载失败，微调前需手动下载"
+fi
 
 echo -e "  ${GREEN}✅ 模型准备完成${NC}"
 

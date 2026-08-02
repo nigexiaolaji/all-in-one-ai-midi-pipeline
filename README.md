@@ -298,3 +298,67 @@ See items flagged for human review:
 Export all final MIDIs to a flat folder:
 
     python pipeline.py export-midi --out out_midis/
+
+---
+
+## MIDI-GPT 训练/生成（可选）
+
+在批处理跑完拿到多轨 MIDI 后，可以在这些 MIDI 上微调 [MIDI-GPT](https://github.com/Metacreation-Lab/MIDI-GPT)。
+基础模型为官方 `yellow_medium`（HuggingFace 仓库 `Metacreation/MIDI-GPT`，约 57MB，走 hf-mirror）。
+
+> 需要 Python 3.9+（本机 3.11 / 魔塔 3.12 均可）。训练依赖独立于主需求，见 `requirements-midigpt.txt`：
+>
+>     pip install -r requirements-midigpt.txt
+
+### 1. 准备训练数据
+
+从已处理的 MIDI（支持多轨，如自动批处理产出的 `output/**/*_merged.mid`）生成 GigaMIDI parquet：
+
+    python midi_gpt/prepare_data.py --input "output/**/*_merged.mid" --output-dir data/midigpt
+
+（Windows 下自动使用 `Score.from_bytes` 规避 C++ 读取器对日文路径的 bug。
+默认切 15% 做验证集，`--no-valid` 可全部进训练集。）
+
+### 2. 预训练 → 微调
+
+`auto_run.sh` 会按需下载官方 `yellow_medium` 基础权重到 `models/midigpt/`，微调时直接复用。
+
+```bash
+python midi_gpt/trainer.py \
+    --init-from models/midigpt/yellow_medium-final.safetensors \
+    --train-data "data/midigpt/train.parquet" \
+    --eval-data "data/midigpt/valid.parquet" \
+    --output-dir checkpoints/midigpt/run_001
+```
+
+`num_workers` 固定为 0（C++ 解析器不支持 fork）。输出 `checkpoints/…/model_final.safetensors`。
+魔塔 Notebook（24G 显存）建议 `--precision bf16 --batch-size 4 --grad-accum 8`。
+
+### 3. 生成
+
+从头生成 8 小节 4 轨节拍：
+
+```bash
+    python midi_gpt/generate.py scratch \
+    --checkpoint checkpoints/midigpt/run_001/model_final.safetensors \
+    --bars 8 --tracks 4 --out generated/song1.mid \
+    --attrs '{"note_density": 5, "max_polyphony": 3}'
+```
+
+对已有 MIDI 的某一条轨做局部补全：
+
+```bash
+    python midi_gpt/generate.py infill \
+        --checkpoint checkpoints/midigpt/run_001/model_final.safetensors \
+        --midi "../output/歌名/歌名_vocals.mid" \
+        --track 0 --bars 4 5 6 7 --out generated/filled.mid
+```
+
+查询当前模型支持的生成属性：`python midi_gpt/generate.py --list-attrs`。
+
+### 4. 魔塔（ModelScope）部署
+
+1. clone 本仓库，**不要**安装主 `requirements.txt`（Python 3.12 下无 wheel），只装 `pip install -r requirements-midigpt.txt`。
+2. 把 `data/midigpt/*.parquet` 传到 Notebook。
+3. 让 `auto_run.sh` 下载 `yellow_medium` 基础权重。
+4. 跑 `trainer.py` 微调；微调权重不大（<1GB），用 `modelscope upload` 传回本地。

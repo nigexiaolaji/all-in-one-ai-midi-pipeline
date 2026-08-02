@@ -1,0 +1,3 @@
+# MIDI-GPT 训练依赖（Python 3.11/3.12 均有 wheel）
+# 安装: pip install -r requirements-midigpt.txt
+midigpt[train]>=0.3.3

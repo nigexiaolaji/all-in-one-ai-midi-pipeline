@@ -25,9 +25,16 @@ manifests/*.json
 data/raw/*
 data/stems/*
 data/midi/*
+data/midi_gpt/*
 !data/raw/.gitkeep
 !data/stems/.gitkeep
 !data/midi/.gitkeep
+!data/midi_gpt/.gitkeep
+
+# --- MIDI-GPT 训练输出 ---
+checkpoints/
+generated/
+models/
 
 # --- Auto-run generated dirs ---
 input/
