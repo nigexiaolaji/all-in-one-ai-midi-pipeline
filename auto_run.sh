@@ -109,16 +109,35 @@ else
     pip install "midigpt[train]" --quiet || echo "    ⚠️ midigpt 安装失败（训练需另行安装）"
 fi
 
-# basic-pitch 单独处理：需要编译，先装构建依赖；失败时保留日志并给出提示
+# basic-pitch 单独处理
+#  - Python <=3.11：标准安装（可能需编译，先装构建依赖）
+#  - Python 3.12+：官方依赖 tensorflow>=2.4.1,<2.15.1 在 3.12 无 wheel，
+#    且旧 numpy 源码（numpy.distutils 引用 distutils.msvccompiler）在 3.12 编译失败
+#    → 兼容方案：numpy==1.26.4 wheel + pip install --no-deps 绕开依赖解析 +
+#      tensorflow-cpu==2.16.1 + 手动补齐运行时依赖
 if python3 -c "import basic_pitch" 2>/dev/null; then
     echo "    basic-pitch — 已安装"
 else
-    echo "    basic-pitch — 安装中（编译较慢，约 1-2 分钟）..."
-    pip install Cython wheel --quiet 2>/dev/null || true
-    if pip install basic-pitch > /tmp/basic_pitch_install.log 2>&1; then
-        echo "    basic-pitch — 安装完成"
+    PY_MAJOR=$(python3 -c 'import sys; print(sys.version_info[0])')
+    PY_MINOR=$(python3 -c 'import sys; print(sys.version_info[1])')
+    if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -ge 12 ]; then
+        echo "    basic-pitch — 安装中（Python 3.12 兼容方案：numpy 1.26 + tensorflow-cpu 2.16）..."
+        pip install "numpy==1.26.4" --only-binary=:all: --quiet 2>/dev/null || true
+        if pip install basic-pitch --no-deps > /tmp/basic_pitch_install.log 2>&1 \
+           && pip install "tensorflow-cpu==2.16.1" librosa mir_eval pretty_midi "resampy<0.4.3" scikit-learn scipy typing_extensions --quiet >> /tmp/basic_pitch_install.log 2>&1 \
+           && python3 -c "import basic_pitch" 2>/dev/null; then
+            echo "    basic-pitch — 安装完成（Python 3.12 兼容方案）"
+        else
+            echo "    ⚠️ basic-pitch 安装失败（日志: /tmp/basic_pitch_install.log）"
+        fi
     else
-        echo "    ⚠️ basic-pitch 安装失败（日志: /tmp/basic_pitch_install.log）"
+        echo "    basic-pitch — 安装中（编译较慢，约 1-2 分钟）..."
+        pip install Cython wheel --quiet 2>/dev/null || true
+        if pip install basic-pitch > /tmp/basic_pitch_install.log 2>&1; then
+            echo "    basic-pitch — 安装完成"
+        else
+            echo "    ⚠️ basic-pitch 安装失败（日志: /tmp/basic_pitch_install.log）"
+        fi
     fi
 fi
 echo -e "  ${GREEN}✅ 依赖检查完成${NC}"
