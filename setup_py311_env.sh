@@ -66,7 +66,9 @@ fi
 # shellcheck disable=SC1091
 source "$ENV_DIR/bin/activate"
 
-echo "[2/3] 升级 pip ..."
+echo "[2/3] 配置 pip 阿里云镜像 + 升级 pip ..."
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ 2>/dev/null || true
+pip config set global.trusted-host mirrors.aliyun.com 2>/dev/null || true
 pip install -U pip -q
 
 echo "[3/3] 安装 requirements.txt（3.11 锁定版本，含 torch GPU 版）..."

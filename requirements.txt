@@ -20,9 +20,9 @@ demucs==4.0.1
 torch==2.1.0
 torchaudio==2.1.0
 
-# Drum transcription (ADTOF) from GitHub
+# Drum transcription (ADTOF) from GitHub (via gh-proxy mirror for ModelScope)
 # This installs the library so that `import adtof_pytorch` works.
-adtof_pytorch @ git+https://github.com/xavriley/ADTOF-pytorch.git@main#egg=adtof_pytorch
+adtof_pytorch @ git+https://v4.gh-proxy.org/https://github.com/xavriley/ADTOF-pytorch.git@main#egg=adtof_pytorch
 
 # Optional: QC / simple UI
 gradio>=4.0.0
