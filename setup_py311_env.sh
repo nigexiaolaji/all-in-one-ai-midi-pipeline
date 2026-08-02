@@ -66,9 +66,19 @@ fi
 # shellcheck disable=SC1091
 source "$ENV_DIR/bin/activate"
 
-echo "[2/3] 配置 pip 阿里云镜像 + 升级 pip ..."
-pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ 2>/dev/null || true
-pip config set global.trusted-host mirrors.aliyun.com 2>/dev/null || true
+echo "[2/3] 选择最快的 pip 源（魔塔内网优先，回退阿里云公网）..."
+# 魔塔实例在阿里云内网，mirrors.cloud.aliyuncs.com 是内网专线（最快）；
+# 本机/其他环境连不通时回退到阿里云公网镜像（实测 1.17MB/s，优于清华 1.13MB/s、
+# 腾讯 0.87MB/s、官方 0.31MB/s）
+if curl -sI -m 8 https://mirrors.cloud.aliyuncs.com/pypi/simple/ -o /dev/null -w "%{http_code}" 2>/dev/null | grep -qE "200|206"; then
+    pip config set global.index-url https://mirrors.cloud.aliyuncs.com/pypi/simple/ 2>/dev/null || true
+    pip config set global.trusted-host mirrors.cloud.aliyuncs.com 2>/dev/null || true
+    echo "  ✅ 使用阿里云内网源（魔塔专线，最快）"
+else
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ 2>/dev/null || true
+    pip config set global.trusted-host mirrors.aliyun.com 2>/dev/null || true
+    echo "  ✅ 使用阿里云公网源"
+fi
 pip install -U pip -q
 
 echo "[3/3] 安装 requirements.txt（3.11 锁定版本，含 torch GPU 版）..."
