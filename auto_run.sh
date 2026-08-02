@@ -32,7 +32,7 @@ cd "$SCRIPT_DIR"
 INPUT_DIR="${INPUT_DIR:-$SCRIPT_DIR/input}"              # MP3 输入目录（默认 pipeline 内 input/）
 OUTPUT_DIR="${OUTPUT_DIR:-/mnt/workspace/output}"        # 输出目录
 PARALLEL="${PARALLEL:-10}"                               # 并行处理歌曲数
-LANGUAGE="${LANGUAGE:-ja}"                               # 歌词语言
+LYRICS_LANG="${LYRICS_LANG:-ja}"                         # 歌词语言（注意：不能叫 LANGUAGE，会被系统 locale 环境变量覆盖）
 WHISPER_MODEL="${WHISPER_MODEL:-large-v3}"               # Whisper 模型 (large-v3 / small)
 SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速）
 SKIP_TO_STAGE="${SKIP_TO_STAGE:-0}"                      # 从第几阶段开始（0=从头开始）
@@ -372,7 +372,7 @@ echo "----------------------------------------"
 echo "  输入目录: $FLAT_INPUT"
 echo "  输出目录: $OUTPUT_DIR"
 echo "  并行数:   $PARALLEL"
-echo "  语言:     $LANGUAGE"
+echo "  语言:     $LYRICS_LANG"
 echo "  Whisper:  $WHISPER_MODEL (本地: $LOCAL_W_DIR)"
 echo "  跳过鼓组: $SKIP_DRUMS"
 echo ""
@@ -382,7 +382,7 @@ CMD_ARGS=(
     "batch"
     "$FLAT_INPUT/*.mp3"
     "--output" "$OUTPUT_DIR"
-    "--language" "$LANGUAGE"
+    "--language" "$LYRICS_LANG"
     "--whisper-model" "$WHISPER_MODEL"
     "--parallel" "$PARALLEL"
 )
