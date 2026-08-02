@@ -91,8 +91,10 @@ def separate_track(audio_path: str, CFG: dict, manifest: dict):
             audio_path,
         ]
         if gpu_available:
-            cmd.insert(2, "-d")
-            cmd.insert(3, "cuda")
+            # `-d cuda` 必须跟在 demucs.separate 之后（index 3），
+            # 插在 `-m` 和模块名之间会被 python 解释器当作自身参数
+            cmd.insert(3, "-d")
+            cmd.insert(4, "cuda")
             print(f"[separate] GPU 满血版 shifts={shifts} segment={segment} overlap={overlap}")
         else:
             print(f"[separate] CPU 节能版 shifts={shifts} segment={segment} overlap={overlap} (~10x 加速)")

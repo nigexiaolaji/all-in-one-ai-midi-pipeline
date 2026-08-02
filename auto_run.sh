@@ -239,8 +239,10 @@ dummy = np.zeros((44100 * 2,), dtype=np.float32)
 tmp = os.path.join(tempfile.gettempdir(), '_bp_dummy.wav')
 sf.write(tmp, dummy, 44100)
 t0 = time.time()
-from basic_pitch.inference import predict
-predict(tmp)
+from basic_pitch.inference import predict, Model
+from basic_pitch import ICASSP_2022_MODEL_PATH
+model = Model(ICASSP_2022_MODEL_PATH)
+predict(tmp, model)
 os.remove(tmp)
 elapsed = time.time() - t0
 if elapsed < 3:
