@@ -158,6 +158,9 @@ def _has_gpu() -> bool:
 
     @return: 是否有 GPU 可用
     """
+    import os
+    if os.environ.get("FORCE_CPU") == "1":
+        return False  # 用户强制 CPU 模式
     try:
         import torch
         return torch.cuda.is_available()

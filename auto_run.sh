@@ -67,10 +67,10 @@ if ! grep -q "HF_ENDPOINT" ~/.bashrc 2>/dev/null; then
 fi
 echo -e "  ${GREEN}✅ 镜像源: aliyun(pip) + hf-mirror(HuggingFace)${NC}"
 
-# --- 检查 GPU（用 nvidia-smi 秒查，不用 torch 冷启动；SKIP_GPU_CHECK=1 完全跳过） ---
+# --- 检查 GPU（用 nvidia-smi 秒查，不用 torch 冷启动；SKIP_GPU_CHECK=1 或 FORCE_CPU=1 时跳过） ---
 echo "  检查 GPU 环境..."
-if [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
-    echo "  （SKIP_GPU_CHECK=true，已跳过 GPU 检查）"
+if [ "${FORCE_CPU:-0}" = "1" ] || [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
+    echo "  （FORCE_CPU/SKIP_GPU_CHECK 已开启，跳过 GPU 检查，全程使用 CPU）"
 elif command -v nvidia-smi >/dev/null 2>&1; then
     if nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 | while read -r name mem; do
         echo "  GPU: $name ($mem)"
@@ -209,20 +209,25 @@ for fname in os.listdir(model_dir):
 print('    已复制 %d 个文件到 %s' % (copied, '$LOCAL_W_DIR'))
 
 from faster_whisper import WhisperModel
+import os as _os
 t0 = time.time()
-model = WhisperModel('$LOCAL_W_DIR', device='cuda', compute_type='float16')
-print('    ✅ 加载成功，耗时 {:.1f}s'.format(time.time() - t0))
+if _os.environ.get('FORCE_CPU') == '1':
+    model = WhisperModel('$LOCAL_W_DIR', device='cpu', compute_type='int8', cpu_threads=8)
+    print('    ✅ 加载成功（CPU 模式），耗时 {:.1f}s'.format(time.time() - t0))
+else:
+    model = WhisperModel('$LOCAL_W_DIR', device='cuda', compute_type='float16')
+    print('    ✅ 加载成功，耗时 {:.1f}s'.format(time.time() - t0))
 " || echo "    ⚠️ Whisper 模型下载/加载失败，可在重试前检查模型缓存目录"
 fi
 
 # --- Demucs htdemucs_6s（走 Facebook CDN） ---
 echo "  [2/3] Demucs htdemucs_6s 模型（约 320MB）..."
 python3 -c "
-import time, torch
+import time, torch, os
 t0 = time.time()
 from demucs import pretrained
 model = pretrained.get_model('htdemucs_6s')
-if torch.cuda.is_available():
+if torch.cuda.is_available() and os.environ.get('FORCE_CPU') != '1':
     model.cuda()
 elapsed = time.time() - t0
 if elapsed < 3:

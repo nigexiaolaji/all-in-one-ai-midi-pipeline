@@ -1082,7 +1082,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
                     print("[bass] entering TorchCREPE F0...", flush=True)
 
                     crepe_device = "cpu"
-                    if torch is not None:
+                    if torch is not None and os.environ.get("FORCE_CPU") != "1":
                         if torch.backends.mps.is_available():
                             crepe_device = "mps"
                         elif torch.cuda.is_available():
@@ -1373,7 +1373,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
                         y_v, sr_v = load_audio_mono(v_path)
                         if y_v is not None and y_v.size > 0:
                             crepe_device = "cpu"
-                            if torch is not None:
+                            if torch is not None and os.environ.get("FORCE_CPU") != "1":
                                 if torch.backends.mps.is_available():
                                     crepe_device = "mps"
                                 elif torch.cuda.is_available():

@@ -21,7 +21,9 @@ cd "$SCRIPT_DIR"
 
 RAW_DIR="${RAW_DIR:-/mnt/workspace/programs}"     # 原始 MP3 目录（魔塔默认挂载点）
 SKIP_PREPARE="${SKIP_PREPARE:-false}"             # true=全量复制，不筛选版本
-PARALLEL="${PARALLEL:-3}"                          # 并行歌曲数（22GB 显存稳定值 3；显存更大可 4-6，再高会 OOM）
+PARALLEL="${PARALLEL:-3}"                          # 并行歌曲数（CPU 环境 3-6 均可；显存充足可更高）
+FORCE_CPU="${FORCE_CPU:-1}"                        # 默认全程 CPU 模式（1=禁用所有 GPU 加速）
+export FORCE_CPU
 INPUT_DIR="$SCRIPT_DIR/input"
 
 echo "=========================================="
@@ -30,6 +32,7 @@ echo "=========================================="
 echo "  原始目录: $RAW_DIR"
 echo "  模式:     $([ "$SKIP_PREPARE" = "true" ] && echo '全量（不筛选）' || echo '去重（每首最佳版本）')"
 echo "  并行数:   $PARALLEL"
+echo "  设备:     $([ "$FORCE_CPU" = "1" ] && echo 'CPU 模式（已禁用 GPU）' || echo '自动检测 GPU/CPU')"
 echo "  Whisper:  large-v3（默认）"
 
 # --- 步骤一：准备 input/ ---
