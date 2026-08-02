@@ -21,7 +21,7 @@ cd "$SCRIPT_DIR"
 
 RAW_DIR="${RAW_DIR:-/mnt/workspace/programs}"     # 原始 MP3 目录（魔塔默认挂载点）
 SKIP_PREPARE="${SKIP_PREPARE:-false}"             # true=全量复制，不筛选版本
-PARALLEL="${PARALLEL:-8}"                          # 并行歌曲数（高性能实例可 8-10；显存不足时调低至 3-4）
+PARALLEL="${PARALLEL:-3}"                          # 并行歌曲数（22GB 显存稳定值 3；显存更大可 4-6，再高会 OOM）
 INPUT_DIR="$SCRIPT_DIR/input"
 
 echo "=========================================="

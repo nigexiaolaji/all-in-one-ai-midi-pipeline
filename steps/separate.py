@@ -99,7 +99,21 @@ def separate_track(audio_path: str, CFG: dict, manifest: dict):
         else:
             print(f"[separate] CPU 节能版 shifts={shifts} segment={segment} overlap={overlap} (~10x 加速)")
         print(f"[separate] Running: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
+        try:
+            proc = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+        except subprocess.CalledProcessError as e:
+            # 打印 demucs 子进程的真实报错（如 CUDA OOM / 模型路径错误），方便定位
+            err_tail = (e.stderr or "")[-2000:]
+            print(f"[separate] ❌ demucs 失败 (exit {e.returncode}), stderr 尾部:")
+            print(err_tail)
+            raise
 
     if not song_out_dir.exists():
         raise RuntimeError(f"[separate] Expected stems in {song_out_dir}, but folder is missing.")
