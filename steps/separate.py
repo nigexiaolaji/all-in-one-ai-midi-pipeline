@@ -85,7 +85,7 @@ def separate_track(audio_path: str, CFG: dict, manifest: dict):
             "demucs.separate",
             "-n", model_name,
             "--shifts", str(shifts),
-            "--segment", str(segment),
+            "--segment", str(int(round(segment))),   # demucs>=4 的 --segment 只接受整数秒
             "--overlap", str(overlap),
             "-o", str(base_out_dir),
             audio_path,
