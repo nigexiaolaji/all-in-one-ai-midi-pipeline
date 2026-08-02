@@ -21,9 +21,14 @@ cd "$SCRIPT_DIR"
 
 RAW_DIR="${RAW_DIR:-/mnt/workspace/programs}"     # 原始 MP3 目录（魔塔默认挂载点）
 SKIP_PREPARE="${SKIP_PREPARE:-false}"             # true=全量复制，不筛选版本
-PARALLEL="${PARALLEL:-3}"                          # 并行歌曲数（CPU 环境 3-6 均可；显存充足可更高）
+PARALLEL="${PARALLEL:-8}"                          # 并行歌曲数（8 核 CPU 拉满 = 8；内存不足可降到 4-6）
 FORCE_CPU="${FORCE_CPU:-1}"                        # 默认全程 CPU 模式（1=禁用所有 GPU 加速）
 export FORCE_CPU
+# CPU 模式线程配置：8 个 worker 进程各 1 线程 = 8 核满载且不互相超订
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export WHISPER_CPU_THREADS="${WHISPER_CPU_THREADS:-1}"
 INPUT_DIR="$SCRIPT_DIR/input"
 
 echo "=========================================="
@@ -31,7 +36,7 @@ echo "  🎵 ModelScope 一键处理"
 echo "=========================================="
 echo "  原始目录: $RAW_DIR"
 echo "  模式:     $([ "$SKIP_PREPARE" = "true" ] && echo '全量（不筛选）' || echo '去重（每首最佳版本）')"
-echo "  并行数:   $PARALLEL"
+echo "  并行数:   $PARALLEL（8 核拉满）"
 echo "  设备:     $([ "$FORCE_CPU" = "1" ] && echo 'CPU 模式（已禁用 GPU）' || echo '自动检测 GPU/CPU')"
 echo "  Whisper:  large-v3（默认）"
 

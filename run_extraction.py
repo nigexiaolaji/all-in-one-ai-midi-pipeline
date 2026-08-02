@@ -415,8 +415,13 @@ def process_batch(
     failed_songs = []
 
     if parallel > 1:
-        # === 多进程并行处理 ===
+        # === 多进程并行处理（实时进度） ===
         from multiprocessing import Pool
+        import functools
+
+        def _run_safe(args):
+            # starmap 的 imap 版包装：把参数元组解包后调用
+            return _process_single_song_safe(*args)
 
         task_args = [
             (
@@ -433,15 +438,31 @@ def process_batch(
             for audio_path in files
         ]
 
+        ok_count = 0
+        fail_count = 0
         with Pool(processes=min(parallel, len(files))) as pool:
-            results = pool.starmap(_process_single_song_safe, task_args)
-
-        for i, (audio_path, result) in enumerate(zip(files, results)):
-            if isinstance(result, Exception):
-                song_id = song_id_from_path(audio_path)
-                print(f"❌ [{i+1}/{len(files)}] 失败: {song_id} - {result}")
-                failed_songs.append({"song_id": song_id, "error": str(result)})
-            else:
+            for i, result in enumerate(
+                pool.imap(_run_safe, task_args, chunksize=1), 1
+            ):
+                song_id = song_id_from_path(files[i - 1])
+                if isinstance(result, Exception):
+                    fail_count += 1
+                    print(
+                        f"❌ [{i}/{len(files)}] 失败({fail_count}): {song_id} - {result}",
+                        flush=True,
+                    )
+                    failed_songs.append({"song_id": song_id, "error": str(result)})
+                else:
+                    ok_count += 1
+                    print(
+                        f"✅ [{i}/{len(files)}] 完成({ok_count}): {song_id}",
+                        flush=True,
+                    )
+                # 实时汇总行（覆盖式显示，便于一眼看进度）
+                print(
+                    f"    └ 进度: {i}/{len(files)}  ✅{ok_count} ❌{fail_count}",
+                    flush=True,
+                )
                 all_results.append(result)
     else:
         # === 顺序处理 ===
