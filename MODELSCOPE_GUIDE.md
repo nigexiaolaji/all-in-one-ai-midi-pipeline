@@ -74,8 +74,8 @@ modelscope login      # 输入魔塔账号的访问令牌（ModelScope 官网 �
 ### 步骤 2.2 本机上传 programs/ 到私有数据集
 
 ```bash
-# 首次上传整个目录（会先自动创建私有数据集 nigexiaolaji/vocaloid-mp3）
-modelscope upload --dataset nigexiaolaji/vocaloid-mp3 D:/MIDI/programs --commit "v1: 108首"
+# 首次上传整个目录（会先自动创建私有数据集 LinNew233/vocaloid-mp3）
+modelscope upload --dataset LinNew233/vocaloid-mp3 D:/MIDI/programs --commit "v1: 108首"
 ```
 
 > 上传前可以先在 ModelScope 网页端确认数据集已创建为**私有**。
@@ -86,7 +86,7 @@ modelscope upload --dataset nigexiaolaji/vocaloid-mp3 D:/MIDI/programs --commit 
 ```bash
 cd /mnt/workspace
 modelscope login      # 在魔塔里也要登录一次（终端会提示粘贴令牌）
-modelscope download --dataset nigexiaolaji/vocaloid-mp3 --local_dir /mnt/workspace/programs
+modelscope download --dataset LinNew233/vocaloid-mp3 --local_dir /mnt/workspace/programs
 ```
 
 ---
@@ -142,10 +142,10 @@ INPUT_DIR=/mnt/workspace/programs bash auto_run.sh
 ```bash
 # 魔塔 Notebook 里：把 output/ 打包上传到数据集
 cd /mnt/workspace
-modelscope upload --dataset nigexiaolaji/vocaloid-output output --commit "v1: 处理结果"
+modelscope upload --dataset LinNew233/vocaloid-output output --commit "v1: 处理结果"
 
 # 本机下载
-modelscope download --dataset nigexiaolaji/vocaloid-output --local_dir D:/MIDI/output
+modelscope download --dataset LinNew233/vocaloid-output --local_dir D:/MIDI/output
 ```
 
 ### 方式 B：zip 打包后从文件面板下载（小结果/一次性）
@@ -160,9 +160,9 @@ zip -r output.zip output/
 ### 方式 C：微调权重传回（<1GB，用模型仓库）
 
 ```bash
-modelscope upload --model nigexiaolaji/midi-gpt-finetuned checkpoints/midigpt/run_001 --commit "v1"
+modelscope upload --model LinNew233/midi-gpt-finetuned checkpoints/midigpt/run_001 --commit "v1"
 # 本机下载
-modelscope download --model nigexiaolaji/midi-gpt-finetuned --local_dir checkpoints/midigpt/run_001
+modelscope download --model LinNew233/midi-gpt-finetuned --local_dir checkpoints/midigpt/run_001
 ```
 
 ---
@@ -172,17 +172,17 @@ modelscope download --model nigexiaolaji/midi-gpt-finetuned --local_dir checkpoi
 ```bash
 # ===== 本机（Windows） =====
 pip install modelscope -U && modelscope login
-modelscope upload --dataset nigexiaolaji/vocaloid-mp3 D:/MIDI/programs --commit "v1"
+modelscope upload --dataset LinNew233/vocaloid-mp3 D:/MIDI/programs --commit "v1"
 
 # ===== 魔塔 Notebook =====
 modelscope login
 git clone <remote-url>        # 或拖拽 zip 解压
-modelscope download --dataset nigexiaolaji/vocaloid-mp3 --local_dir /mnt/workspace/programs
+modelscope download --dataset LinNew233/vocaloid-mp3 --local_dir /mnt/workspace/programs
 cd all-in-one-ai-midi-pipeline && bash modelscope_run.sh
-modelscope upload --dataset nigexiaolaji/vocaloid-output /mnt/workspace/output --commit "v1"
+modelscope upload --dataset LinNew233/vocaloid-output /mnt/workspace/output --commit "v1"
 
 # ===== 本机下载结果 =====
-modelscope download --dataset nigexiaolaji/vocaloid-output --local_dir D:/MIDI/output
+modelscope download --dataset LinNew233/vocaloid-output --local_dir D:/MIDI/output
 ```
 
 ---
