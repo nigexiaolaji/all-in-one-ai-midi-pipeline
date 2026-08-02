@@ -65,16 +65,29 @@ if ! grep -q "HF_ENDPOINT" ~/.bashrc 2>/dev/null; then
 fi
 echo -e "  ${GREEN}✅ 镜像源: aliyun(pip) + hf-mirror(HuggingFace)${NC}"
 
-# --- 检查 GPU ---
+# --- 检查 GPU（用 nvidia-smi 秒查，不用 torch 冷启动；SKIP_GPU_CHECK=1 完全跳过） ---
 echo "  检查 GPU 环境..."
-python3 -c "
+if [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
+    echo "  （SKIP_GPU_CHECK=true，已跳过 GPU 检查）"
+elif command -v nvidia-smi >/dev/null 2>&1; then
+    if nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 | while read -r name mem; do
+        echo "  GPU: $name ($mem)"
+    done; then
+        echo -e "  ${GREEN}✅ GPU 环境正常${NC}"
+    else
+        echo -e "  ${RED}⚠️ nvidia-smi 查询失败，GPU 可能不可用${NC}"
+    fi
+else
+    echo "  nvidia-smi 不可用，改用 torch 检测（首次加载较慢）..."
+    python3 -c "
 import torch
 assert torch.cuda.is_available(), 'GPU 不可用！'
 print(f'  GPU: {torch.cuda.get_device_name(0)}')
 vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
 print(f'  VRAM: {vram:.1f} GB')
 " 2>&1 | while read -r line; do echo "  $line"; done
-echo -e "  ${GREEN}✅ GPU 环境正常${NC}"
+    echo -e "  ${GREEN}✅ GPU 环境正常${NC}"
+fi
 
 # --- 检查/安装依赖（幂等，Python 3.12 不锁定版本） ---
 echo ""
