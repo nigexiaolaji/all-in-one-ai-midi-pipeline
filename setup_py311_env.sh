@@ -82,8 +82,21 @@ fi
 pip install -U pip -q
 
 echo "[3/3] 安装 requirements.txt（3.11 锁定版本，含 torch GPU 版）..."
+echo "      优先 uv 多线程并行安装（比 pip 快数倍），失败自动回退 pip"
 echo "      这步耗时较长（torch 约 2GB+），请耐心等待..."
-pip install -r requirements.txt
+if command -v uv >/dev/null 2>&1 || pip install uv -q 2>/dev/null; then
+    INDEX_URL=$(pip config get global.index-url 2>/dev/null | tail -1)
+    echo "  🚀 使用 uv 并行安装（源: ${INDEX_URL:-default}）..."
+    if uv pip install -r requirements.txt --index-url "$INDEX_URL" --no-cache; then
+        echo "  ✅ uv 并行安装完成"
+    else
+        echo "  ⚠️ uv 安装失败，回退 pip（--prefer-binary 避免源码编译）..."
+        pip install -r requirements.txt --prefer-binary
+    fi
+else
+    echo "  uv 不可用，使用 pip（--prefer-binary 避免源码编译）..."
+    pip install -r requirements.txt --prefer-binary
+fi
 
 echo ""
 echo "=========================================="
