@@ -25,7 +25,7 @@ max_seq_len: 2048
 
 # --- 检查点 / 日志 ---
 save_steps: 500
-eval_steps: 100          # 每 100 步验证一次（验证是纯开销，100 步足够；且 ≤ 训练批次数约束宽松）
+eval_steps: 9            # 必须 ≤ 训练批次数（batch 8 时 69÷8≈9），取最大值 9 = 每 epoch 验证一次
 logging_steps: 20
 logger: none
 
