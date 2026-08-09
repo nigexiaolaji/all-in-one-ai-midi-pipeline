@@ -141,6 +141,17 @@ else
         || echo "    ⚠️ ml_dtypes 升级失败（demucs 分离可能报 float4_e2m1fn 错误）"
 fi
 
+# pytorch-lightning 预装 1.x 的依赖声明非法（torch (>=1.9.*)），pip 24.1+ 会拒绝处理，
+# 直接阻塞 midigpt[train] 安装；先升级到 2.x（依赖声明合法）再装 midigpt
+if "$PYTHON_BIN" -c "import pytorch_lightning; v=tuple(map(int, pytorch_lightning.__version__.split('.')[:2])); assert v[0]>=2" 2>/dev/null; then
+    echo "    pytorch-lightning — 版本满足要求"
+else
+    echo "    pytorch-lightning — 升级中（预装 1.x 依赖声明非法，会阻塞 midigpt 安装）..."
+    pip install -U "pytorch-lightning>=2.0" --quiet 2>/dev/null \
+        && echo "    pytorch-lightning — 升级完成" \
+        || echo "    ⚠️ pytorch-lightning 升级失败（可手动执行: pip uninstall pytorch-lightning）"
+fi
+
 # midigpt 单独处理：需要 [train] extra（lightning/datasets/pyarrow）
 if "$PYTHON_BIN" -c "import midigpt" 2>/dev/null; then
     echo "    midigpt — 已安装"
