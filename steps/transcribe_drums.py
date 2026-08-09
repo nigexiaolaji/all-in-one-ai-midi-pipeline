@@ -4,7 +4,6 @@ import numpy as np
 import pretty_midi
 
 from utils.audio_utils import load_audio_mono
-from adtof_pytorch import transcribe_to_midi as adtof_to_midi
 
 
 def _merge_adtof_output(mid_path: str) -> pretty_midi.Instrument:
@@ -96,6 +95,13 @@ def transcribe_drums_to_midi(drum_stem_or_path, CFG, manifest):
         return None
 
     # 1) Run ADTOF to get a raw drum MIDI
+    # 懒加载：SKIP_DRUMS=true 时无需安装 adtof_pytorch（模块级导入会拖垮整条流水线）
+    try:
+        from adtof_pytorch import transcribe_to_midi as adtof_to_midi
+    except ImportError:
+        manifest.setdefault("transcription", {})["drums"] = "error:adtof_not_installed"
+        return None
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_mid = os.path.join(tmpdir, "drums_adtof.mid")
 

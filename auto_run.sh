@@ -117,6 +117,7 @@ declare -A PKG_IMPORT=(
     [faster-whisper]=faster_whisper
     [demucs]=demucs
     [pretty_midi]=pretty_midi
+    [music21]=music21
 )
 
 for pkg in "${!PKG_IMPORT[@]}"; do
@@ -135,6 +136,19 @@ if "$PYTHON_BIN" -c "import midigpt" 2>/dev/null; then
 else
     echo "    midigpt — 安装中..."
     pip install "midigpt[train]" --quiet || echo "    ⚠️ midigpt 安装失败（训练需另行安装）"
+fi
+
+# adtof_pytorch 单独处理：鼓转录用（git 安装，走 gh-proxy 镜像）
+# 注意：steps/transcribe_drums.py 已改为函数内懒加载，装不上时 SKIP_DRUMS=true 不受影响
+if "$PYTHON_BIN" -c "import adtof_pytorch" 2>/dev/null; then
+    echo "    adtof_pytorch — 已安装"
+else
+    echo "    adtof_pytorch — 安装中（git+gh-proxy，约 1-2 分钟）..."
+    if pip install "adtof_pytorch @ git+https://v4.gh-proxy.org/https://github.com/xavriley/ADTOF-pytorch.git@main#egg=adtof_pytorch" --quiet 2>/dev/null; then
+        echo "    adtof_pytorch — 安装完成"
+    else
+        echo "    ⚠️ adtof_pytorch 安装失败（SKIP_DRUMS=true 时不影响运行）"
+    fi
 fi
 
 # basic-pitch 单独处理
