@@ -11,9 +11,9 @@ lr_scheduler_type: linear
 # --- 训练循环 ---
 # 数据集很小（每首歌曲被切窗后按窗口采样），直接用步数控制
 num_epochs: 30            # max_steps > 0 时被覆盖
-max_steps: 2000           # 总训练步数（小数据 2000 步足够起步）
-per_device_batch_size: 4  # per-GPU batch
-gradient_accumulation_steps: 8  # 有效 batch = 4 x 8 = 32
+max_steps: 2000           # 总训练步数（69 首小数据 2000 步足够，且防过拟合）
+per_device_batch_size: 8  # per-GPU batch（A10 显存充足，提升每步吞吐）
+gradient_accumulation_steps: 4  # 有效 batch = 8 x 4 = 32（与之前 4x8 完全一致）
 seed: 42
 num_workers: 0            # 必须为 0（C++ 解析器不支持 fork）
 
@@ -25,7 +25,7 @@ max_seq_len: 2048
 
 # --- 检查点 / 日志 ---
 save_steps: 500
-eval_steps: 10           # 必须 ≤ 训练批次数（69 首 ÷ batch 4 ≈ 18），否则 Lightning 报错
+eval_steps: 100          # 每 100 步验证一次（验证是纯开销，100 步足够；且 ≤ 训练批次数约束宽松）
 logging_steps: 20
 logger: none
 

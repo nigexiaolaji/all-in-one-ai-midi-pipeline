@@ -26,9 +26,9 @@ cd "$SCRIPT_DIR"
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
 # ============ 可配置参数（环境变量覆盖） ============
-MAX_STEPS="${MAX_STEPS:-4000}"        # 69 首数据，4000 步；可覆盖
-BATCH_SIZE="${BATCH_SIZE:-4}"         # 24G 显存建议 4
-GRAD_ACCUM="${GRAD_ACCUM:-8}"          # 有效 batch = 4 x 8 = 32
+MAX_STEPS="${MAX_STEPS:-2000}"        # 69 首数据 2000 步足够，且防过拟合；可覆盖
+BATCH_SIZE="${BATCH_SIZE:-8}"         # A10 24G 显存充足；有效 batch = 8 x 4 = 32
+GRAD_ACCUM="${GRAD_ACCUM:-4}"          # 有效 batch = 8 x 4 = 32
 PRECISION="${PRECISION:-bf16}"
 LR="${LR:-2e-5}"
 OUTPUT_DIR="${OUTPUT_DIR:-checkpoints/midigpt/run_001}"
@@ -119,7 +119,7 @@ python3 midi_gpt/trainer.py \
     --batch-size "$BATCH_SIZE" \
     --grad-accum "$GRAD_ACCUM" \
     --precision "$PRECISION" \
-    --eval-steps 10 \
+    --eval-steps 100 \
     --save-steps 500
 
 echo ""
