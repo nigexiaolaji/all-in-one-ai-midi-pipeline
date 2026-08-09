@@ -113,6 +113,7 @@ python3 midi_gpt/trainer.py \
     --train-data "data/midi_gpt/train.parquet" \
     --eval-data "data/midi_gpt/valid.parquet" \
     --output-dir "$OUTPUT_DIR" \
+    --config midi_gpt/train_config.yaml \
     --max-steps "$MAX_STEPS" \
     --lr "$LR" \
     --batch-size "$BATCH_SIZE" \

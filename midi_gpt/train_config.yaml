@@ -34,10 +34,13 @@ max_tracks: 12
 min_tracks: 1
 min_fill_ratio: 0.75
 
-# --- 补全 / 掩码训练（与预训练一致的分布） ---
-infill_probability: 0.75
-infill_bar_fraction: 0.5
-mask_apply_probability: 0.5
-mask_mode: 2              # 0=RANDOM 1=STRUCTURED 2=MIXED
-mask_bar_fraction: 0.25
-mask_max_lookahead: 4
+# --- 补全 / 掩码训练 ---
+# ⚠️ 官方 yellow_medium 基础权重不支持 infill/mask（词表无 MaskBar token、
+#    supports_infill=false），必须全部置 0，否则训练报 ValueError。
+#    等训练到支持这些特性的权重后再开启。
+infill_probability: 0.0
+infill_bar_fraction: 0.0
+mask_apply_probability: 0.0
+mask_mode: 0              # 0=RANDOM 1=STRUCTURED 2=MIXED
+mask_bar_fraction: 0.0
+mask_max_lookahead: 0
