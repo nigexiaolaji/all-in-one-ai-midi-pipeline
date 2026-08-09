@@ -632,6 +632,8 @@ def _bp_predict_events(
     """
     midi_tempo = _get_midi_tempo(manifest)
 
+    import time as _t
+    _t0 = _t.perf_counter()
     out = predict(
         audio_path,
         _get_model(),
@@ -640,6 +642,7 @@ def _bp_predict_events(
         frame_threshold=frame_threshold,
         minimum_note_length=min_note_len,
     )
+    print(f"[bp] 转录完成: {_t.perf_counter()-_t0:.1f}s ({audio_path})", flush=True)
 
     events = []
 
@@ -1067,6 +1070,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
     if b_path and os.path.exists(b_path):
         try:
             # 1) Basic Pitch bass events
+            print("[bass] 正在转录（首次需加载 TF 模型，约 1-2 分钟，请耐心等待）...", flush=True)
             b_events = _bp_predict_events(b_path, manifest)
             raw_b_events = list(b_events)  # fallback
 
@@ -1175,6 +1179,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
     g_path = stems.get("guitar")
     if g_path and os.path.exists(g_path):
         try:
+            print("[guitar] 正在转录...", flush=True)
             # Keep BP only mildly stricter than default so real notes don't disappear
             g_events = _bp_predict_events(
                 g_path,
@@ -1245,6 +1250,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
     o_path = stems.get("other")
     if o_path and os.path.exists(o_path):
         try:
+            print("[other] 正在转录...", flush=True)
             o_events = _bp_predict_events(
                 o_path,
                 manifest,
@@ -1317,6 +1323,7 @@ def transcribe_pitched_tracks(stems: dict, CFG: dict, manifest: dict):
     if v_path and os.path.exists(v_path):
         try:
             # 1) Basic Pitch (more conservative for vocals)
+            print("[vocals] 正在转录（人声轨，最耗时）...", flush=True)
             v_events = _bp_predict_events(
                 v_path,
                 manifest,

@@ -642,4 +642,9 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        # Ctrl+C：多进程池会自行清理，这里只做友好提示（不打印一屏 traceback）
+        print("\n[中断] 收到 Ctrl+C，已停止处理。已完成歌曲的结果已保存，重跑会从断点继续。", flush=True)
+        raise SystemExit(130)
