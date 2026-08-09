@@ -118,7 +118,9 @@ python3 midi_gpt/trainer.py \
     --lr "$LR" \
     --batch-size "$BATCH_SIZE" \
     --grad-accum "$GRAD_ACCUM" \
-    --precision "$PRECISION"
+    --precision "$PRECISION" \
+    --eval-steps 10 \
+    --save-steps 500
 
 echo ""
 echo -e "${GREEN}==========================================${NC}"
