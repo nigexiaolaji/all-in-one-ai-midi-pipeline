@@ -22,7 +22,7 @@ cd "$SCRIPT_DIR"
 
 RAW_DIR="${RAW_DIR:-/mnt/workspace/programs}"     # 原始 MP3 目录（魔塔默认挂载点）
 SKIP_PREPARE="${SKIP_PREPARE:-false}"             # true=全量复制，不筛选版本
-PARALLEL="${PARALLEL:-8}"                          # 并行歌曲数（8 核 CPU 拉满 = 8；内存不足可降到 4-6）
+PARALLEL="${PARALLEL:-3}"                          # 并行歌曲数（spawn 下每 worker 独立加载 TF 模型，8核 CPU 建议 2-3）
 FORCE_CPU="${FORCE_CPU:-1}"                        # 默认全程 CPU 模式（1=禁用所有 GPU 加速）
 export FORCE_CPU
 # Python 解释器：默认 python3（py312 镜像）；预装 python3.11 时可 PYTHON_BIN=python3.11 覆盖

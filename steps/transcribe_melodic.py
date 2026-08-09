@@ -20,8 +20,17 @@ from .key_normalize import detect_key_only
 from basic_pitch.inference import predict, Model
 from basic_pitch import ICASSP_2022_MODEL_PATH
 
-# One shared Basic Pitch model
-_MODEL = Model(ICASSP_2022_MODEL_PATH)
+# One shared Basic Pitch model（懒加载：模块 import 时不初始化 TF，
+# 避免 multiprocessing fork 子进程继承已初始化的 TensorFlow 状态导致死锁）
+_MODEL = None
+
+
+def _get_model():
+    """延迟加载 Basic Pitch 模型（进程内首次调用时才初始化 TF）。"""
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = Model(ICASSP_2022_MODEL_PATH)
+    return _MODEL
 
 
 def _get_midi_tempo(manifest: dict) -> float:
@@ -625,7 +634,7 @@ def _bp_predict_events(
 
     out = predict(
         audio_path,
-        _MODEL,
+        _get_model(),
         midi_tempo=midi_tempo,
         onset_threshold=onset_threshold,
         frame_threshold=frame_threshold,

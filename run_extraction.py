@@ -416,7 +416,10 @@ def process_batch(
 
     if parallel > 1:
         # === 多进程并行处理（实时进度） ===
-        from multiprocessing import Pool
+        # 必须用 spawn 而非 fork：fork 会继承主进程已初始化的 TensorFlow 状态，
+        # 子进程预测时死锁（CPU 0% 卡死）。spawn 下每个 worker 干净重启、懒加载模型。
+        from multiprocessing import get_context
+        pool_ctx = get_context("spawn")
 
         task_args = [
             (
@@ -435,7 +438,7 @@ def process_batch(
 
         ok_count = 0
         fail_count = 0
-        with Pool(processes=min(parallel, len(files))) as pool:
+        with pool_ctx.Pool(processes=min(parallel, len(files))) as pool:
             for i, result in enumerate(
                 pool.imap(_process_single_song_safe_star, task_args, chunksize=1), 1
             ):

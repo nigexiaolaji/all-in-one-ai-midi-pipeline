@@ -33,7 +33,7 @@ cd "$SCRIPT_DIR"
 
 INPUT_DIR="${INPUT_DIR:-$SCRIPT_DIR/input}"              # MP3 输入目录（默认 pipeline 内 input/）
 OUTPUT_DIR="${OUTPUT_DIR:-/mnt/workspace/output}"        # 输出目录
-PARALLEL="${PARALLEL:-8}"                                # 并行处理歌曲数（8核 CPU 拉满）
+PARALLEL="${PARALLEL:-3}"                                # 并行处理歌曲数（spawn 下每 worker 独立加载 TF 模型，CPU 建议 2-3）
 LYRICS_LANG="${LYRICS_LANG:-ja}"                         # 歌词语言（注意：不能叫 LANGUAGE，会被系统 locale 环境变量覆盖）
 WHISPER_MODEL="${WHISPER_MODEL:-large-v3}"               # Whisper 模型 (large-v3 / small)
 SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速，CPU 上极慢）
