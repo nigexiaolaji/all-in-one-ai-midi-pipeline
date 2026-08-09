@@ -40,6 +40,7 @@ SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（
 SKIP_TO_STAGE="${SKIP_TO_STAGE:-0}"                      # 从第几阶段开始（0=从头开始）
 MODEL_DIR="${MODEL_DIR:-$(dirname "$SCRIPT_DIR")/model}" # 本地模型根目录（large/ 与 small/）
 FORCE_CPU="${FORCE_CPU:-1}"                              # 默认 CPU 模式（1=禁用 GPU 加速；GPU 环境可 FORCE_CPU=0）
+export FORCE_CPU                                         # 必须 export：Whisper/demucs/歌词模块靠环境变量判断 CPU 模式
 # Python 解释器：默认 python3（py312 镜像）；预装 python3.11 时可 PYTHON_BIN=python3.11 覆盖
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
@@ -129,6 +130,16 @@ for pkg in "${!PKG_IMPORT[@]}"; do
         pip install "$pkg" --quiet || echo "    ⚠️ ${pkg} 安装失败"
     fi
 done
+
+# ml_dtypes 升级：onnx/torch 需要新版（float4_e2m1fn），旧版会导致 demucs 启动崩溃
+if "$PYTHON_BIN" -c "import ml_dtypes; getattr(ml_dtypes, 'float4_e2m1fn')" 2>/dev/null; then
+    echo "    ml_dtypes — 版本满足要求"
+else
+    echo "    ml_dtypes — 升级中（修复 demucs/onnx float4 兼容）..."
+    pip install -U ml_dtypes --quiet 2>/dev/null \
+        && echo "    ml_dtypes — 升级完成" \
+        || echo "    ⚠️ ml_dtypes 升级失败（demucs 分离可能报 float4_e2m1fn 错误）"
+fi
 
 # midigpt 单独处理：需要 [train] extra（lightning/datasets/pyarrow）
 if "$PYTHON_BIN" -c "import midigpt" 2>/dev/null; then
