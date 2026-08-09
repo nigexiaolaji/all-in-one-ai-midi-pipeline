@@ -131,34 +131,46 @@ for pkg in "${!PKG_IMPORT[@]}"; do
     fi
 done
 
-# ml_dtypes 升级：onnx/torch 需要新版（float4_e2m1fn），旧版会导致 demucs 启动崩溃
-if "$PYTHON_BIN" -c "import ml_dtypes; getattr(ml_dtypes, 'float4_e2m1fn')" 2>/dev/null; then
-    echo "    ml_dtypes — 版本满足要求"
-else
-    echo "    ml_dtypes — 升级中（修复 demucs/onnx float4 兼容）..."
-    pip install -U ml_dtypes --quiet 2>/dev/null \
-        && echo "    ml_dtypes — 升级完成" \
-        || echo "    ⚠️ ml_dtypes 升级失败（demucs 分离可能报 float4_e2m1fn 错误）"
-fi
+# --- 版本兼容修复：onnx / ml-dtypes / protobuf 与 tensorflow 2.15 互斥 ---
+# demucs 经 torch.onnx 会导入 onnx 包，新版 onnx（>=1.17）引用 ml_dtypes.float4_e2m1fn（需 0.4+），
+# 而 tensorflow 2.15 要求 ml-dtypes~=0.2.0 且 protobuf<5 —— 两者互斥。
+# 解法：onnx 降到 <1.17（不再引用 float4）+ ml-dtypes 固定 0.2.x + protobuf <5，
+# 使 demucs 与 basic_pitch(tensorflow) 同时可运行。
+echo "    检查 tensorflow 兼容版本（onnx/ml-dtypes/protobuf）..."
+"$PYTHON_BIN" -c "
+import importlib.metadata as m
 
-# pytorch-lightning 预装 1.x 的依赖声明非法（torch (>=1.9.*)），pip 24.1+ 会拒绝处理，
-# 直接阻塞 midigpt[train] 安装；先升级到 2.x（依赖声明合法）再装 midigpt
-if "$PYTHON_BIN" -c "import pytorch_lightning; v=tuple(map(int, pytorch_lightning.__version__.split('.')[:2])); assert v[0]>=2" 2>/dev/null; then
-    echo "    pytorch-lightning — 版本满足要求"
-else
-    echo "    pytorch-lightning — 升级中（预装 1.x 依赖声明非法，会阻塞 midigpt 安装）..."
-    pip install -U "pytorch-lightning>=2.0" --quiet 2>/dev/null \
-        && echo "    pytorch-lightning — 升级完成" \
-        || echo "    ⚠️ pytorch-lightning 升级失败（可手动执行: pip uninstall pytorch-lightning）"
-fi
+def ver(p):
+    try:
+        return tuple(map(int, m.version(p).split('.')[:3]))
+    except Exception:
+        return None
 
-# midigpt 单独处理：需要 [train] extra（lightning/datasets/pyarrow）
-if "$PYTHON_BIN" -c "import midigpt" 2>/dev/null; then
-    echo "    midigpt — 已安装"
-else
-    echo "    midigpt — 安装中..."
-    pip install "midigpt[train]" --quiet || echo "    ⚠️ midigpt 安装失败（训练需另行安装）"
-fi
+fix = []
+ov = ver('onnx')
+if ov is not None and ov >= (1, 17, 0):
+    print('    onnx 版本过高 (%s)，降级 <1.17 ...' % m.version('onnx'))
+    fix.append('onnx<1.17')
+mv = ver('ml_dtypes')
+if mv is not None and not (0, 2, 0) <= mv < (0, 3, 0):
+    print('    ml-dtypes 需 0.2.x（当前 %s），修复 ...' % m.version('ml_dtypes'))
+    fix.append('ml-dtypes~=0.2.0')
+pv = ver('protobuf')
+if pv is not None and pv >= (5, 0, 0):
+    print('    protobuf 版本过高 (%s)，降级 <5 ...' % m.version('protobuf'))
+    fix.append('protobuf>=3.20.3,<5.0.0dev')
+if fix:
+    import subprocess, sys
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', '--no-input'] + fix)
+    print('    ✅ 版本修复完成')
+else:
+    print('    ✅ 版本组合 OK')
+" 2>/dev/null || echo "    ⚠️ 版本检查失败（onnx 未安装时无需处理，demucs 分离时会自动跳过）"
+
+# midigpt 不再自动安装：其依赖（datasets/pyarrow 等）会把 protobuf 拉高到 7.x，
+# 与 tensorflow 2.15（basic_pitch 依赖，要求 protobuf<5）冲突，破坏提取流水线。
+# 训练时请用独立 venv 安装：pip install -r requirements-midigpt.txt
+echo "    midigpt — 跳过自动安装（训练时用独立 venv 装 requirements-midigpt.txt，避免 protobuf 与 tensorflow 冲突）"
 
 # adtof_pytorch 单独处理：鼓转录用（git 安装，走 gh-proxy 镜像）
 # 注意：steps/transcribe_drums.py 已改为函数内懒加载，装不上时 SKIP_DRUMS=true 不受影响
