@@ -1,8 +1,10 @@
 #!/bin/bash
 # ============================================================
 #  AI MIDI Pipeline — 全自动一键运行脚本
-#  目标环境: ModelScope Notebook (Ubuntu 22.04 + CUDA 12.8.1)
-#            Python 3.12 + PyTorch 2.10 + 24GB 显存 GPU
+#  目标环境: ModelScope Notebook CPU 版（8核32GB，长期使用实例）
+#            预装镜像 ubuntu22.04-py312-torch2.3.1-1.39.0
+#            （Python 3.12 + PyTorch 2.3.1 CPU 版 + ModelScope Library）
+#  默认全程 CPU 模式；如需 GPU 可 FORCE_CPU=0 覆盖
 #
 #  用法:
 #      1. 把 all-in-one-ai-midi-pipeline 目录上传到 /mnt/workspace/
@@ -31,17 +33,24 @@ cd "$SCRIPT_DIR"
 
 INPUT_DIR="${INPUT_DIR:-$SCRIPT_DIR/input}"              # MP3 输入目录（默认 pipeline 内 input/）
 OUTPUT_DIR="${OUTPUT_DIR:-/mnt/workspace/output}"        # 输出目录
-PARALLEL="${PARALLEL:-10}"                               # 并行处理歌曲数
+PARALLEL="${PARALLEL:-8}"                                # 并行处理歌曲数（8核 CPU 拉满）
 LYRICS_LANG="${LYRICS_LANG:-ja}"                         # 歌词语言（注意：不能叫 LANGUAGE，会被系统 locale 环境变量覆盖）
 WHISPER_MODEL="${WHISPER_MODEL:-large-v3}"               # Whisper 模型 (large-v3 / small)
-SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速）
+SKIP_DRUMS="${SKIP_DRUMS:-true}"                         # 跳过鼓组转录（加速，CPU 上极慢）
 SKIP_TO_STAGE="${SKIP_TO_STAGE:-0}"                      # 从第几阶段开始（0=从头开始）
 MODEL_DIR="${MODEL_DIR:-$(dirname "$SCRIPT_DIR")/model}" # 本地模型根目录（large/ 与 small/）
+FORCE_CPU="${FORCE_CPU:-1}"                              # 默认 CPU 模式（1=禁用 GPU 加速；GPU 环境可 FORCE_CPU=0）
+# Python 解释器：默认 python3（py312 镜像）；预装 python3.11 时可 PYTHON_BIN=python3.11 覆盖
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo -e "${RED}❌ 未找到 Python 解释器: $PYTHON_BIN（可用 PYTHON_BIN=python3.11 指定）${NC}"
+    exit 1
+fi
 
 echo -e "${BLUE}"
 echo "=========================================="
 echo "  🎵 AI MIDI Pipeline — 全自动运行"
-echo "  ModelScope Notebook 环境"
+echo "  ModelScope Notebook CPU 环境"
 echo "=========================================="
 echo -e "${NC}"
 
@@ -67,10 +76,14 @@ if ! grep -q "HF_ENDPOINT" ~/.bashrc 2>/dev/null; then
 fi
 echo -e "  ${GREEN}✅ 镜像源: aliyun(pip) + hf-mirror(HuggingFace)${NC}"
 
-# --- 检查 GPU（用 nvidia-smi 秒查，不用 torch 冷启动；SKIP_GPU_CHECK=1 或 FORCE_CPU=1 时跳过） ---
-echo "  检查 GPU 环境..."
-if [ "${FORCE_CPU:-0}" = "1" ] || [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
-    echo "  （FORCE_CPU/SKIP_GPU_CHECK 已开启，跳过 GPU 检查，全程使用 CPU）"
+# --- 打印运行环境版本 ---
+echo -e "  Python:   $("$PYTHON_BIN" --version 2>&1)"
+"$PYTHON_BIN" -c "import torch; print('  PyTorch: ', torch.__version__, '| CUDA 可用:', torch.cuda.is_available())" 2>/dev/null \
+    || echo -e "  ${YELLOW}⚠️ torch 未安装或不可导入（依赖检查阶段会自动安装）${NC}"
+
+# --- 检查 GPU（CPU 默认直接跳过；SKIP_GPU_CHECK=1 或 FORCE_CPU=1 时跳过） ---
+if [ "${FORCE_CPU:-1}" = "1" ] || [ "${SKIP_GPU_CHECK:-false}" = "true" ]; then
+    echo -e "  ${GREEN}✅ 运行模式: CPU（FORCE_CPU=1，8核并行）${NC}"
 elif command -v nvidia-smi >/dev/null 2>&1; then
     if nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1 | while read -r name mem; do
         echo "  GPU: $name ($mem)"
@@ -81,7 +94,7 @@ elif command -v nvidia-smi >/dev/null 2>&1; then
     fi
 else
     echo "  nvidia-smi 不可用，改用 torch 检测（首次加载较慢）..."
-    python3 -c "
+    "$PYTHON_BIN" -c "
 import torch
 assert torch.cuda.is_available(), 'GPU 不可用！'
 print(f'  GPU: {torch.cuda.get_device_name(0)}')
@@ -108,7 +121,7 @@ declare -A PKG_IMPORT=(
 
 for pkg in "${!PKG_IMPORT[@]}"; do
     import_name="${PKG_IMPORT[$pkg]}"
-    if python3 -c "import ${import_name}" 2>/dev/null; then
+    if "$PYTHON_BIN" -c "import ${import_name}" 2>/dev/null; then
         echo "    ${pkg} — 已安装"
     else
         echo "    ${pkg} — 安装中..."
@@ -117,7 +130,7 @@ for pkg in "${!PKG_IMPORT[@]}"; do
 done
 
 # midigpt 单独处理：需要 [train] extra（lightning/datasets/pyarrow）
-if python3 -c "import midigpt" 2>/dev/null; then
+if "$PYTHON_BIN" -c "import midigpt" 2>/dev/null; then
     echo "    midigpt — 已安装"
 else
     echo "    midigpt — 安装中..."
@@ -130,17 +143,17 @@ fi
 #    且旧 numpy 源码（numpy.distutils 引用 distutils.msvccompiler）在 3.12 编译失败
 #    → 兼容方案：numpy==1.26.4 wheel + pip install --no-deps 绕开依赖解析 +
 #      tensorflow-cpu==2.16.1 + 手动补齐运行时依赖
-if python3 -c "import basic_pitch" 2>/dev/null; then
+if "$PYTHON_BIN" -c "import basic_pitch" 2>/dev/null; then
     echo "    basic-pitch — 已安装"
 else
-    PY_MAJOR=$(python3 -c 'import sys; print(sys.version_info[0])')
-    PY_MINOR=$(python3 -c 'import sys; print(sys.version_info[1])')
+    PY_MAJOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info[0])')
+    PY_MINOR=$("$PYTHON_BIN" -c 'import sys; print(sys.version_info[1])')
     if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -ge 12 ]; then
         echo "    basic-pitch — 安装中（Python 3.12 兼容方案：numpy 1.26 + tensorflow-cpu 2.16）..."
         pip install "numpy==1.26.4" --only-binary=:all: --quiet 2>/dev/null || true
         if pip install basic-pitch --no-deps > /tmp/basic_pitch_install.log 2>&1 \
            && pip install "tensorflow-cpu==2.16.1" librosa mir_eval pretty_midi "resampy<0.4.3" scikit-learn scipy typing_extensions --quiet >> /tmp/basic_pitch_install.log 2>&1 \
-           && python3 -c "import basic_pitch" 2>/dev/null; then
+           && "$PYTHON_BIN" -c "import basic_pitch" 2>/dev/null; then
             echo "    basic-pitch — 安装完成（Python 3.12 兼容方案）"
         else
             echo "    ⚠️ basic-pitch 安装失败（日志: /tmp/basic_pitch_install.log）"
@@ -184,9 +197,9 @@ if [ -f "$LOCAL_W_DIR/model.bin" ]; then
     echo -e "  ${GREEN}✅ 使用本地模型: $LOCAL_W_DIR${NC}"
 else
     echo "  本地模型不存在（$LOCAL_W_DIR），从 ModelScope 内网下载 $MODELSCOPE_ID..."
-    python3 -c "import modelscope" 2>/dev/null || pip install modelscope --quiet
+    "$PYTHON_BIN" -c "import modelscope" 2>/dev/null || pip install modelscope --quiet
 
-    python3 -c "
+    "$PYTHON_BIN" -c "
 import os, time, shutil
 from modelscope import snapshot_download
 t0 = time.time()
@@ -222,7 +235,7 @@ fi
 
 # --- Demucs htdemucs_6s（走 Facebook CDN） ---
 echo "  [2/3] Demucs htdemucs_6s 模型（约 320MB）..."
-python3 -c "
+"$PYTHON_BIN" -c "
 import time, torch, os
 t0 = time.time()
 from demucs import pretrained
@@ -238,7 +251,7 @@ else:
 
 # --- Basic Pitch（走 tfhub.dev） ---
 echo "  [3/3] Basic Pitch 模型（约 60MB，走 tfhub.dev）..."
-python3 -c "
+"$PYTHON_BIN" -c "
 import numpy as np, soundfile as sf, tempfile, os, time
 dummy = np.zeros((44100 * 2,), dtype=np.float32)
 tmp = os.path.join(tempfile.gettempdir(), '_bp_dummy.wav')
@@ -263,7 +276,7 @@ echo "  [4/4] MIDI-GPT 基础模型 yellow_medium（约 57MB，走 hf-mirror）.
 if [ -f "$MIDIGPT_DIR/yellow_medium-final.safetensors" ]; then
     echo "    ✅ 已存在: $MIDIGPT_DIR/yellow_medium-final.safetensors"
 else
-    HF_ENDPOINT=https://hf-mirror.com python3 -c "
+    HF_ENDPOINT=https://hf-mirror.com "$PYTHON_BIN" -c "
 from huggingface_hub import hf_hub_download
 p = hf_hub_download(
     repo_id='Metacreation/MIDI-GPT',
@@ -400,14 +413,14 @@ if [ "$SKIP_TO_STAGE" != "0" ]; then
 fi
 
 echo "  执行命令:"
-echo "  python3 run_extraction.py ${CMD_ARGS[*]}"
+echo "  $PYTHON_BIN run_extraction.py ${CMD_ARGS[*]}"
 echo ""
 
 START_TIME=$(date +%s)
 
 # 关闭 set -e，确保流水线失败后仍能执行阶段四的汇总
 set +e
-python3 run_extraction.py "${CMD_ARGS[@]}"
+"$PYTHON_BIN" run_extraction.py "${CMD_ARGS[@]}"
 EXIT_CODE=$?
 set -e
 
